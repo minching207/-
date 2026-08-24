@@ -14,14 +14,6 @@ export const ADMIN_PASSWORD = '1111';
 // Replace any broken/deprecated Unsplash assets and clean tools references
 function sanitizeProjectImagesAndTools(projects: any[]) {
   if (!Array.isArray(projects) || projects.length === 0) return initialSiteContent.projects;
-  
-  // Check if saved projects include diverse categories, if not merge with default
-  const hasMultipleCategories = projects.some(p => 
-    p.category?.includes('SNS') || p.category?.includes('BANNER') || p.category?.includes('VIDEO')
-  );
-  if (!hasMultipleCategories) {
-    return initialSiteContent.projects;
-  }
 
   return projects.map((p) => {
     let cover = p.coverImage;

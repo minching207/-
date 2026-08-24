@@ -247,7 +247,7 @@ export const initialSiteContent: SiteContent = {
     {
       id: "project-lip-tint-video-motion",
       number: "04",
-      title: "글로우 립 틴트 15초 숏폼 프로모션 영상 & 모션 그래픽",
+      title: "글로우 립 틴트 프로모션 영상 & 모션 그래픽",
       category: "VIDEO & MOTION",
       projectType: "video-motion",
       summary: "탕후루 광택 제형의 유리알 광채와 감각적인 텍스처 움직임을 리듬감 있는 모션 그래픽과 트렌디한 사운드 비트에 맞춘 멀티 포맷 프로모션 비디오 (모바일 숏폼, PC 와이드, SNS 정방형 풀 패키지).",
@@ -263,7 +263,7 @@ export const initialSiteContent: SiteContent = {
           dimension: "1080 x 1920 px (9:16)",
           videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-lipstick-in-front-of-a-mirror-40762-large.mp4",
           coverImage: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&w=1200&q=85",
-          description: "인스타그램 릴스, 유튜브 쇼츠, 틱톡 모바일 세로 풀스크린 최적화 영상. 자막 세이프존 준수 및 15초 빠른 비트 컷전환."
+          description: "인스타그램 릴스, 유튜브 쇼츠, 틱톡 모바일 세로 풀스크린 최적화 영상. 자막 세이프존 준수 및 빠른 비트 컷전환."
         },
         {
           id: "var-pc",
@@ -326,7 +326,7 @@ export const initialSiteContent: SiteContent = {
         {
           id: "sec-1",
           title: "01. 9:16 VERTICAL REELS MOTION PREVIEW",
-          caption: "모바일 숏폼 풀스크린 재생 화면 및 15초 스토리보드 구성",
+          caption: "모바일 숏폼 풀스크린 재생 화면 및 스토리보드 구성",
           imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&w=1200&q=85",
           type: "full"
         },

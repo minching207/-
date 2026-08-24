@@ -18,9 +18,16 @@ import {
   Eye,
   Settings,
   HelpCircle,
+  Smartphone,
+  Monitor,
+  Square,
+  Film,
+  Video,
+  Clock,
+  Copy,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { SiteContent, Project, DesignFocusItem, ProjectSection, ApproachStep, ExperienceItem } from '../types';
+import { SiteContent, Project, DesignFocusItem, ProjectSection, ApproachStep, ExperienceItem, VideoKeyframe } from '../types';
 import { ADMIN_PASSWORD, setAdminSession } from '../utils/storage';
 import { MediaFileUpload, MultiImageSliceUpload } from './MediaFileUpload';
 
@@ -136,7 +143,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     newProjects.forEach((p, idx) => {
       p.number = String(idx + 1).padStart(2, '0');
     });
-    setDraft({ ...draft, projects: newProjects });
+    const newDraft = { ...draft, projects: newProjects };
+    setDraft(newDraft);
+    onSaveContent(newDraft);
   };
 
   const handleDeleteProject = (id: string) => {
@@ -145,11 +154,29 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       filtered.forEach((p, idx) => {
         p.number = String(idx + 1).padStart(2, '0');
       });
-      setDraft({ ...draft, projects: filtered });
+      const newDraft = { ...draft, projects: filtered };
+      setDraft(newDraft);
+      onSaveContent(newDraft);
       if (editingProject?.id === id) {
         setEditingProject(null);
       }
     }
+  };
+
+  const handleDuplicateProject = (proj: Project) => {
+    const newId = `proj-${Date.now()}`;
+    const duplicated: Project = {
+      ...JSON.parse(JSON.stringify(proj)),
+      id: newId,
+      number: String(draft.projects.length + 1).padStart(2, '0'),
+      title: `${proj.title} (복사본)`,
+    };
+    const updatedProjects = [...draft.projects, duplicated];
+    const newDraft = { ...draft, projects: updatedProjects };
+    setDraft(newDraft);
+    onSaveContent(newDraft);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2500);
   };
 
   const handleSaveEditingProject = (proj: Project) => {
@@ -160,18 +187,22 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     } else {
       updatedProjects = draft.projects.map((p) => (p.id === proj.id ? proj : p));
     }
-    setDraft({ ...draft, projects: updatedProjects });
+    const newDraft = { ...draft, projects: updatedProjects };
+    setDraft(newDraft);
+    onSaveContent(newDraft); // Immediately persist to app state and localStorage
     setEditingProject(null);
     setIsCreatingNewProject(false);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-md flex justify-center p-2 sm:p-6">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black/70 backdrop-blur-md flex items-center justify-center p-2 sm:p-6">
       <motion.div
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.97 }}
-        className="relative w-full max-w-5xl bg-[#181818] text-[#ECECE8] rounded-xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh] border border-[#333330]"
+        className="relative w-full max-w-5xl bg-[#181818] text-[#ECECE8] rounded-xl shadow-2xl overflow-hidden flex flex-col h-[94vh] sm:h-[90vh] border border-[#333330]"
       >
         {/* Top Header */}
         <div className="bg-[#202020] px-6 py-4 border-b border-[#303030] flex items-center justify-between">
@@ -419,6 +450,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                                 <span>상세 편집</span>
+                              </button>
+                              <button
+                                onClick={() => handleDuplicateProject(proj)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-xs text-amber-300 border border-[#3E3E3A]"
+                                title="이 프로젝트 복사하여 추가 (복제)"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>복제</span>
                               </button>
                               <button
                                 onClick={() => handleDeleteProject(proj.id)}
@@ -861,6 +900,30 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
     setForm({ ...form, sections: updated });
   };
 
+  const handleAddKeyframe = () => {
+    const currentKeyframes = form.videoKeyframes || [];
+    const count = currentKeyframes.length + 1;
+    const newFrame: VideoKeyframe = {
+      timestamp: `00:${String((count - 1) * 5).padStart(2, '0')} - 00:${String(count * 5).padStart(2, '0')}`,
+      title: `0${count}. SCENE TITLE (씬 제목)`,
+      description: '이 타임라인 구간의 주요 모션 그래픽 연출 의도 및 화면 전환 효과를 작성합니다.'
+    };
+    setForm({ ...form, videoKeyframes: [...currentKeyframes, newFrame] });
+  };
+
+  const handleRemoveKeyframe = (index: number) => {
+    const currentKeyframes = form.videoKeyframes || [];
+    const updated = currentKeyframes.filter((_, idx) => idx !== index);
+    setForm({ ...form, videoKeyframes: updated.length > 0 ? updated : undefined });
+  };
+
+  const isVideoProject = 
+    form.projectType === 'video-motion' || 
+    form.category?.includes('영상') || 
+    form.category?.includes('모션') || 
+    form.category?.includes('VIDEO') || 
+    form.category?.includes('MOTION');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between pb-4 border-b border-[#333330]">
@@ -896,27 +959,30 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-mono text-[#888880]">카테고리</label>
+          <label className="text-xs font-mono text-[#888880]">프로젝트 유형 / 카테고리</label>
           <div className="flex gap-1.5 mb-1.5 flex-wrap">
             {[
               { label: '상세페이지', val: 'DETAIL PAGE', type: 'detail-page' as const },
               { label: 'SNS 콘텐츠', val: 'SNS CONTENT', type: 'sns-content' as const },
               { label: '쇼핑몰 메인배너', val: 'MAIN BANNER', type: 'main-banner' as const },
               { label: '영상·모션', val: 'VIDEO & MOTION', type: 'video-motion' as const },
-            ].map((c) => (
-              <button
-                key={c.val}
-                type="button"
-                onClick={() => setForm({ ...form, category: c.val, projectType: c.type })}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
-                  form.category === c.val
-                    ? 'bg-[#EC4899] text-white border-[#EC4899] font-bold'
-                    : 'bg-[#2A2A28] text-slate-400 border-[#3A3A36] hover:text-white'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
+            ].map((c) => {
+              const isSelected = form.projectType === c.type || (c.type === 'video-motion' ? isVideoProject : form.category === c.val);
+              return (
+                <button
+                  key={c.val}
+                  type="button"
+                  onClick={() => setForm({ ...form, category: c.val, projectType: c.type })}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono border transition-all ${
+                    isSelected
+                      ? 'bg-[#EC4899] text-white border-[#EC4899] font-bold shadow-sm'
+                      : 'bg-[#2A2A28] text-slate-300 border-[#3A3A36] hover:text-white hover:bg-[#343430]'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
           </div>
           <input
             type="text"
@@ -928,13 +994,27 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
         </div>
       </div>
 
-      {/* Video & Motion Multi-Size Settings */}
-      <div className="p-4 rounded-xl bg-[#242422] border border-[#3A3A36] space-y-4">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-mono text-pink-400 font-bold flex items-center gap-1.5">
-            <span>🎥 영상 콘텐츠 파일 및 멀티사이즈 설정</span>
-          </label>
-          <div className="flex items-center gap-1">
+      {/* Video & Motion Multi-Size Settings (Only visible for Video & Motion projects) */}
+      {isVideoProject && (
+      <div className="p-4 rounded-xl bg-[#242422] border border-pink-900/40 space-y-4 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#333330]">
+          <div>
+            <label className="text-xs font-mono text-pink-400 font-bold flex items-center gap-1.5">
+              <Film className="w-4 h-4 text-pink-400" />
+              <span>영상 포맷 & 사이즈 설정 (1가지, 2가지, 또는 3가지 자유 등록)</span>
+            </label>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              1개 사이즈만 단독 등록하거나, 2개 또는 3개 사이즈(9:16, 16:9, 1:1)를 필요한 만큼 자유롭게 조합할 수 있습니다.
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Presets & Format Generators */}
+        <div className="space-y-2 bg-[#1C1C1A] p-3 rounded-lg border border-[#333330]">
+          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-bold">
+            ⚡ 빠른 프리셋 조합 선택
+          </span>
+          <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
               onClick={() => {
@@ -944,7 +1024,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
                   videoUrl: baseVid,
                   videoVariations: [
                     {
-                      id: "var-shortform",
+                      id: "var-shortform-" + Date.now(),
                       type: "9:16",
                       label: "모바일 숏폼 버전 (9:16)",
                       dimension: "1080 x 1920 px (9:16)",
@@ -952,7 +1032,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
                       description: "인스타그램 릴스, 유튜브 쇼츠, 틱톡 모바일 세로 풀스크린 최적화 영상"
                     },
                     {
-                      id: "var-pc",
+                      id: "var-pc-" + Date.now(),
                       type: "16:9",
                       label: "PC·웹 와이드 버전 (16:9)",
                       dimension: "1920 x 1080 px (16:9)",
@@ -960,7 +1040,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
                       description: "웹사이트 메인 및 유튜브용 16:9 와이드 가로형 시네마틱 영상"
                     },
                     {
-                      id: "var-square",
+                      id: "var-square-" + Date.now(),
                       type: "1:1",
                       label: "정사각형 타입 (1:1)",
                       dimension: "1080 x 1080 px (1:1)",
@@ -970,63 +1050,485 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
                   ]
                 });
               }}
-              className="px-2.5 py-1 rounded text-[10px] font-mono bg-[#333330] text-slate-300 hover:text-white border border-[#444440]"
+              className="px-2.5 py-1 rounded text-[11px] font-mono bg-pink-950/60 text-pink-300 hover:bg-pink-900/80 border border-pink-700/60 font-semibold"
             >
-              + 3가지 멀티사이즈 자동생성
+              ✨ 3가지 전체 (9:16 + 16:9 + 1:1)
             </button>
+
             <button
               type="button"
               onClick={() => {
+                const baseVid = form.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-lipstick-in-front-of-a-mirror-40762-large.mp4";
                 setForm({
                   ...form,
-                  videoVariations: undefined
+                  videoUrl: baseVid,
+                  videoVariations: [
+                    {
+                      id: "var-shortform-" + Date.now(),
+                      type: "9:16",
+                      label: "모바일 숏폼 버전 (9:16)",
+                      dimension: "1080 x 1920 px (9:16)",
+                      videoUrl: baseVid,
+                      description: "인스타그램 릴스, 유튜브 쇼츠, 틱톡 모바일 세로 풀스크린 최적화 영상"
+                    },
+                    {
+                      id: "var-pc-" + Date.now(),
+                      type: "16:9",
+                      label: "PC·웹 와이드 버전 (16:9)",
+                      dimension: "1920 x 1080 px (16:9)",
+                      videoUrl: baseVid,
+                      description: "웹사이트 메인 및 유튜브용 16:9 와이드 가로형 시네마틱 영상"
+                    }
+                  ]
                 });
               }}
-              className="px-2.5 py-1 rounded text-[10px] font-mono bg-[#333330] text-slate-400 hover:text-rose-400 border border-[#444440]"
+              className="px-2.5 py-1 rounded text-[11px] font-mono bg-[#2C2C2A] text-slate-200 hover:text-white border border-[#444440]"
             >
-              숏폼 단독으로 리셋
+              2가지 (9:16 + 16:9)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const baseVid = form.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-lipstick-in-front-of-a-mirror-40762-large.mp4";
+                setForm({
+                  ...form,
+                  videoUrl: baseVid,
+                  videoVariations: [
+                    {
+                      id: "var-shortform-" + Date.now(),
+                      type: "9:16",
+                      label: "모바일 숏폼 버전 (9:16)",
+                      dimension: "1080 x 1920 px (9:16)",
+                      videoUrl: baseVid,
+                      description: "인스타그램 릴스, 유튜브 쇼츠, 틱톡 모바일 세로 풀스크린 최적화 영상"
+                    },
+                    {
+                      id: "var-square-" + Date.now(),
+                      type: "1:1",
+                      label: "정사각형 타입 (1:1)",
+                      dimension: "1080 x 1080 px (1:1)",
+                      videoUrl: baseVid,
+                      description: "인스타그램 피드 및 모바일 광고 피드용 1:1 정방형 영상"
+                    }
+                  ]
+                });
+              }}
+              className="px-2.5 py-1 rounded text-[11px] font-mono bg-[#2C2C2A] text-slate-200 hover:text-white border border-[#444440]"
+            >
+              2가지 (9:16 + 1:1)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const baseVid = form.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-lipstick-in-front-of-a-mirror-40762-large.mp4";
+                setForm({
+                  ...form,
+                  videoUrl: baseVid,
+                  aspectRatio: "9:16",
+                  videoVariations: [
+                    {
+                      id: "var-shortform-" + Date.now(),
+                      type: "9:16",
+                      label: "모바일 숏폼 버전 (9:16)",
+                      dimension: "1080 x 1920 px (9:16)",
+                      videoUrl: baseVid,
+                      description: "모바일 세로형 풀스크린 단독 영상"
+                    }
+                  ]
+                });
+              }}
+              className="px-2.5 py-1 rounded text-[11px] font-mono bg-[#2C2C2A] text-slate-300 hover:text-white border border-[#444440]"
+            >
+              1가지 단독 (9:16 숏폼)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const baseVid = form.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-lipstick-in-front-of-a-mirror-40762-large.mp4";
+                setForm({
+                  ...form,
+                  videoUrl: baseVid,
+                  aspectRatio: "16:9",
+                  videoVariations: [
+                    {
+                      id: "var-pc-" + Date.now(),
+                      type: "16:9",
+                      label: "PC·웹 와이드 버전 (16:9)",
+                      dimension: "1920 x 1080 px (16:9)",
+                      videoUrl: baseVid,
+                      description: "16:9 와이드 가로형 시네마틱 단독 영상"
+                    }
+                  ]
+                });
+              }}
+              className="px-2.5 py-1 rounded text-[11px] font-mono bg-[#2C2C2A] text-slate-300 hover:text-white border border-[#444440]"
+            >
+              1가지 단독 (16:9 와이드)
             </button>
           </div>
         </div>
 
-        {/* Primary Video Direct Upload */}
-        <MediaFileUpload
-          label="기본 / 모바일 숏폼(9:16) 영상 파일"
-          value={form.videoUrl || ''}
-          onChange={(val) => setForm({ ...form, videoUrl: val })}
-          accept="video"
-          placeholder="내 컴퓨터에서 영상 파일(MP4, WebM 등)을 선택하세요"
-          helperText="영상/모션 카테고리 프로젝트의 메인 재생 영상입니다. (내 PC 파일 바로 업로드 가능)"
-          previewHeight="h-44"
-        />
+        {/* Dynamic Registered Variations List */}
+        {form.videoVariations && form.videoVariations.length > 0 ? (
+          <div className="space-y-4 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-pink-300 font-bold flex items-center gap-1.5">
+                <span>등록된 영상 사이즈 ({form.videoVariations.length}개):</span>
+              </span>
 
-        {form.videoVariations && form.videoVariations.length > 0 && (
-          <div className="space-y-3 pt-3 border-t border-[#333330]">
-            <span className="text-[11px] font-mono text-pink-300 block font-bold">
-              등록된 사이즈별 바리에이션 ({form.videoVariations.length}개):
-            </span>
-            {form.videoVariations.map((v, vIdx) => (
-              <div key={v.id || vIdx} className="p-3 rounded-lg bg-[#1C1C1A] border border-[#333330] space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-white font-mono">{v.label} ({v.type})</span>
-                  <span className="text-[10px] text-pink-400 font-mono">{v.dimension}</span>
-                </div>
-                <MediaFileUpload
-                  value={v.videoUrl || ''}
-                  onChange={(val) => {
-                    const newVars = [...(form.videoVariations || [])];
-                    newVars[vIdx] = { ...newVars[vIdx], videoUrl: val };
-                    setForm({ ...form, videoVariations: newVars });
+              {/* Add format button */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVars = form.videoVariations || [];
+                    const newVar = {
+                      id: "var-" + Date.now(),
+                      type: "9:16",
+                      label: "모바일 숏폼 (9:16)",
+                      dimension: "1080 x 1920 px (9:16)",
+                      videoUrl: form.videoUrl || "",
+                      description: "모바일 세로형 영상"
+                    };
+                    setForm({ ...form, videoVariations: [...currentVars, newVar] });
                   }}
-                  accept="video"
-                  placeholder={`${v.label} 영상 파일 선택`}
-                  previewHeight="h-28"
-                />
+                  className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#333330] text-slate-200 hover:text-pink-300 border border-[#444440] flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> + 9:16 추가
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVars = form.videoVariations || [];
+                    const newVar = {
+                      id: "var-" + Date.now(),
+                      type: "16:9",
+                      label: "PC 와이드 (16:9)",
+                      dimension: "1920 x 1080 px (16:9)",
+                      videoUrl: form.videoUrl || "",
+                      description: "PC 및 웹용 16:9 가로형 영상"
+                    };
+                    setForm({ ...form, videoVariations: [...currentVars, newVar] });
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#333330] text-slate-200 hover:text-pink-300 border border-[#444440] flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> + 16:9 추가
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVars = form.videoVariations || [];
+                    const newVar = {
+                      id: "var-" + Date.now(),
+                      type: "1:1",
+                      label: "정방형 (1:1)",
+                      dimension: "1080 x 1080 px (1:1)",
+                      videoUrl: form.videoUrl || "",
+                      description: "SNS 피드용 정방형 영상"
+                    };
+                    setForm({ ...form, videoVariations: [...currentVars, newVar] });
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#333330] text-slate-200 hover:text-pink-300 border border-[#444440] flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> + 1:1 추가
+                </button>
               </div>
-            ))}
+            </div>
+
+            {form.videoVariations.map((v, vIdx) => {
+              const IconComp = v.type === '16:9' ? Monitor : v.type === '1:1' ? Square : Smartphone;
+              return (
+                <div key={v.id || vIdx} className="p-3.5 rounded-xl bg-[#1C1C1A] border border-[#3A3A36] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 rounded bg-[#2C2C2A] text-pink-400">
+                        <IconComp className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-white font-mono">
+                        사이즈 #{vIdx + 1}: {v.label}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newVars = form.videoVariations?.filter((_, idx) => idx !== vIdx);
+                        setForm({
+                          ...form,
+                          videoVariations: (newVars && newVars.length > 0) ? newVars : undefined
+                        });
+                      }}
+                      className="px-2 py-1 rounded text-[10px] font-mono text-rose-400 hover:bg-rose-950/50 hover:text-rose-300 border border-rose-900/40 flex items-center gap-1 transition-colors"
+                      title="이 사이즈 삭제"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>이 사이즈 삭제</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[10px] font-mono text-slate-400 block mb-1">비율 타입</label>
+                      <select
+                        value={v.type}
+                        onChange={(e) => {
+                          const newType = e.target.value;
+                          const newVars = [...(form.videoVariations || [])];
+                          const defaultDims: Record<string, string> = {
+                            '9:16': '1080 x 1920 px (9:16)',
+                            '16:9': '1920 x 1080 px (16:9)',
+                            '1:1': '1080 x 1080 px (1:1)',
+                          };
+                          newVars[vIdx] = {
+                            ...newVars[vIdx],
+                            type: newType,
+                            dimension: defaultDims[newType] || newVars[vIdx].dimension
+                          };
+                          setForm({ ...form, videoVariations: newVars });
+                        }}
+                        className="w-full px-2 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+                      >
+                        <option value="9:16">9:16 (모바일 세로/숏폼)</option>
+                        <option value="16:9">16:9 (PC/웹 가로 와이드)</option>
+                        <option value="1:1">1:1 (SNS 피드 정방형)</option>
+                        <option value="custom">직접 지정 (Custom)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-mono text-slate-400 block mb-1">사이즈 이름 / 라벨</label>
+                      <input
+                        type="text"
+                        value={v.label}
+                        onChange={(e) => {
+                          const newVars = [...(form.videoVariations || [])];
+                          newVars[vIdx] = { ...newVars[vIdx], label: e.target.value };
+                          setForm({ ...form, videoVariations: newVars });
+                        }}
+                        className="w-full px-2 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+                        placeholder="e.g. 모바일 숏폼 버전 (9:16)"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-mono text-slate-400 block mb-1">해상도 규격 (Dimension)</label>
+                      <input
+                        type="text"
+                        value={v.dimension}
+                        onChange={(e) => {
+                          const newVars = [...(form.videoVariations || [])];
+                          newVars[vIdx] = { ...newVars[vIdx], dimension: e.target.value };
+                          setForm({ ...form, videoVariations: newVars });
+                        }}
+                        className="w-full px-2 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+                        placeholder="e.g. 1080 x 1920 px (9:16)"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Video File Upload */}
+                  <MediaFileUpload
+                    label={`${v.label} 영상 파일`}
+                    value={v.videoUrl || ''}
+                    onChange={(val) => {
+                      const newVars = [...(form.videoVariations || [])];
+                      newVars[vIdx] = { ...newVars[vIdx], videoUrl: val };
+                      // Also sync primary videoUrl if this is the first item
+                      const updatedForm = { ...form, videoVariations: newVars };
+                      if (vIdx === 0) {
+                        updatedForm.videoUrl = val;
+                      }
+                      setForm(updatedForm);
+                    }}
+                    accept="video"
+                    placeholder="영상 파일(MP4, WebM 등)을 선택하세요"
+                    previewHeight="h-32"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* Single Video Mode (When no variations array is defined) */
+          <div className="space-y-3 pt-1">
+            <div className="p-3 rounded-lg bg-[#1C1C1A] border border-[#3A3A36] flex items-center justify-between">
+              <span className="text-xs font-mono text-slate-300 font-bold flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-pink-400" />
+                <span>단일 영상 파일 등록 모드</span>
+              </span>
+              <span className="text-[10px] font-mono text-slate-400">
+                (2개 또는 3개 사이즈 등록을 원하시면 위의 프리셋 버튼을 클릭하세요)
+              </span>
+            </div>
+
+            <MediaFileUpload
+              label="단독 재생 영상 파일"
+              value={form.videoUrl || ''}
+              onChange={(val) => setForm({ ...form, videoUrl: val })}
+              accept="video"
+              placeholder="내 컴퓨터에서 영상 파일(MP4, WebM 등)을 선택하세요"
+              helperText="단독 사이즈로 등록되는 메인 재생 영상 파일입니다."
+              previewHeight="h-40"
+            />
           </div>
         )}
+
+        {/* Video Storyboard & Timeline Editor */}
+        <div className="pt-4 border-t border-[#333330] space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <label className="text-xs font-mono text-pink-300 font-bold flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-pink-400" />
+                <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
+              </label>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                상세 모달에 노출되는 구간별 타임스탬프(00:00~), 씬 제목, 모션 그래픽 연출 설명을 자유롭게 편집합니다.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setForm({
+                    ...form,
+                    videoKeyframes: [
+                      {
+                        timestamp: "00:00 - 00:03",
+                        title: "01. INTRO HOOK (유리알 광택 클로즈업)",
+                        description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
+                      },
+                      {
+                        timestamp: "00:04 - 00:09",
+                        title: "02. USP SHADE TRANSITION (색상 스위칭)",
+                        description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
+                      },
+                      {
+                        timestamp: "00:10 - 00:15",
+                        title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
+                        description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
+                      }
+                    ]
+                  });
+                }}
+                className="px-2.5 py-1 rounded text-[10px] font-mono bg-[#333330] text-pink-300 hover:text-white border border-[#444440]"
+              >
+                ✨ 기본 3단계 씬 프리셋
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddKeyframe}
+                className="px-2.5 py-1 rounded text-[10px] font-mono bg-pink-900/60 text-pink-200 hover:bg-pink-800/70 border border-pink-700/60 flex items-center gap-1 font-semibold"
+              >
+                <Plus className="w-3 h-3" /> + 새 씬 추가
+              </button>
+            </div>
+          </div>
+
+          {form.videoKeyframes && form.videoKeyframes.length > 0 ? (
+            <div className="space-y-3">
+              {form.videoKeyframes.map((kf, kfIdx) => (
+                <div
+                  key={kfIdx}
+                  className="p-3.5 rounded-xl bg-[#1C1C1A] border border-[#3A3A36] space-y-2.5 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="w-5 h-5 rounded bg-pink-950/80 text-pink-400 font-mono text-[11px] font-bold flex items-center justify-center border border-pink-800/60">
+                        {kfIdx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="타임스탬프 (예: 00:00 - 00:03)"
+                        value={kf.timestamp}
+                        onChange={(e) => {
+                          const updated = [...(form.videoKeyframes || [])];
+                          updated[kfIdx] = { ...updated[kfIdx], timestamp: e.target.value };
+                          setForm({ ...form, videoKeyframes: updated });
+                        }}
+                        className="w-36 px-2.5 py-1 rounded bg-[#242422] border border-[#3A3A36] text-pink-300 font-mono text-xs"
+                      />
+                      <input
+                        type="text"
+                        placeholder="씬 제목 (예: 01. INTRO HOOK (유리알 광택 클로즈업))"
+                        value={kf.title}
+                        onChange={(e) => {
+                          const updated = [...(form.videoKeyframes || [])];
+                          updated[kfIdx] = { ...updated[kfIdx], title: e.target.value };
+                          setForm({ ...form, videoKeyframes: updated });
+                        }}
+                        className="flex-1 px-2.5 py-1 rounded bg-[#242422] border border-[#3A3A36] text-white font-bold text-xs"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveKeyframe(kfIdx)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded transition-colors"
+                      title="이 씬 삭제"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div>
+                    <textarea
+                      rows={2}
+                      placeholder="이 타임라인 구간의 핵심 연출 내용 및 화면 구성 설명 (예: 화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정)"
+                      value={kf.description}
+                      onChange={(e) => {
+                        const updated = [...(form.videoKeyframes || [])];
+                        updated[kfIdx] = { ...updated[kfIdx], description: e.target.value };
+                        setForm({ ...form, videoKeyframes: updated });
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-slate-300 text-xs resize-none"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4 rounded-xl bg-[#1C1C1A] border border-dashed border-[#3A3A36] text-center space-y-2">
+              <p className="text-xs text-slate-400">
+                등록된 스토리보드 씬이 없습니다. 기본 3단계 씬을 불러오거나 직접 추가해보세요.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm({
+                    ...form,
+                    videoKeyframes: [
+                      {
+                        timestamp: "00:00 - 00:03",
+                        title: "01. INTRO HOOK (유리알 광택 클로즈업)",
+                        description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
+                      },
+                      {
+                        timestamp: "00:04 - 00:09",
+                        title: "02. USP SHADE TRANSITION (색상 스위칭)",
+                        description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
+                      },
+                      {
+                        timestamp: "00:10 - END",
+                        title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
+                        description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
+                      }
+                    ]
+                  });
+                }}
+                className="px-3 py-1.5 rounded bg-[#2A2A28] hover:bg-[#343430] text-pink-300 text-xs font-mono border border-[#444440] inline-flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                <span>+ 3단계 스토리보드 기본 구성 생성</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+      )}
 
       <div className="space-y-1.5">
         <label className="text-xs font-mono text-[#888880]">한 줄 요약 (Summary)</label>
@@ -1099,7 +1601,8 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
         />
       </div>
 
-      {/* 02. DESIGN FOCUS */}
+      {/* 02. DESIGN FOCUS (비디오 프로젝트가 아닐 때만 노출) */}
+      {!isVideoProject && (
       <div className="space-y-3 pt-3 border-t border-[#333330]">
         <div className="flex items-center justify-between">
           <label className="text-xs font-mono text-[#888880]">02. DESIGN FOCUS (고민한 디자인 포인트 2~3개)</label>
@@ -1147,8 +1650,10 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
           ))}
         </div>
       </div>
+      )}
 
-      {/* 03. DESIGN SECTIONS (상세페이지 분할 컷팅 및 다중 이미지/GIF 지원) */}
+      {/* 03. DESIGN SECTIONS (상세페이지 분할 컷팅 및 다중 이미지/GIF 지원 - 비디오 프로젝트가 아닐 때만 노출) */}
+      {!isVideoProject && (
       <div className="space-y-4 pt-4 border-t border-[#333330]">
         <div className="flex items-center justify-between">
           <div>
@@ -1238,6 +1743,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
           })}
         </div>
       </div>
+      )}
 
       {/* 04. OUTCOME */}
       <div className="space-y-2 pt-3 border-t border-[#333330]">
@@ -1268,18 +1774,21 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
         />
       </div>
 
-      <div className="pt-4 flex justify-end gap-3">
+      <div className="pt-4 flex justify-end items-center gap-3">
         <button
+          type="button"
           onClick={onCancel}
-          className="px-4 py-2 rounded bg-[#333330] text-xs text-white"
+          className="px-4 py-2 rounded-lg bg-[#333330] hover:bg-[#40403C] text-xs text-white transition-colors"
         >
           취소
         </button>
         <button
+          type="button"
           onClick={() => onSave(form)}
-          className="px-5 py-2 rounded bg-white text-xs font-bold text-[#141414]"
+          className="px-5 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-pink-500 hover:from-amber-400 hover:to-pink-400 text-xs font-bold text-white shadow-md active:scale-95 transition-all flex items-center gap-1.5"
         >
-          프로젝트 저장
+          <CheckCircle className="w-3.5 h-3.5" />
+          <span>프로젝트 저장 & 즉시 반영</span>
         </button>
       </div>
     </div>

@@ -417,8 +417,8 @@ interface MultiImageSliceUploadProps {
   label?: string;
   images: string[];
   onChange: (images: string[]) => void;
-  layoutMode?: 'seamless' | 'spaced' | 'grid';
-  onLayoutModeChange?: (mode: 'seamless' | 'spaced' | 'grid') => void;
+  layoutMode?: 'seamless' | 'spaced' | 'grid' | 'slide' | 'carousel';
+  onLayoutModeChange?: (mode: 'seamless' | 'spaced' | 'grid' | 'slide') => void;
 }
 
 export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
@@ -611,6 +611,18 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
               title="2열 그리드 배치"
             >
               2열 그리드
+            </button>
+            <button
+              type="button"
+              onClick={() => onLayoutModeChange('slide')}
+              className={`px-2 py-1 rounded text-[10px] font-mono transition-all ${
+                layoutMode === 'slide' || layoutMode === 'carousel'
+                  ? 'bg-pink-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="옆으로 넘기는 가로 슬라이더 / 캐러셀"
+            >
+              가로 슬라이드
             </button>
           </div>
         )}

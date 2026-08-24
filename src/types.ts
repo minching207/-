@@ -10,7 +10,7 @@ export interface ProjectSection {
   caption?: string;
   imageUrl: string;
   images?: string[]; // Multiple sliced images/cuts for detailed pages
-  layoutMode?: 'seamless' | 'spaced' | 'grid'; // Sliced continuous seamless stacking or spaced
+  layoutMode?: 'seamless' | 'spaced' | 'grid' | 'slide' | 'carousel'; // Sliced continuous seamless stacking, spaced, 2-col grid, or horizontal slider
   type?: 'full' | 'split' | 'mobile' | 'grid';
   aspectRatio?: string;
   alt?: string;

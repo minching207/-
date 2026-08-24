@@ -33,6 +33,221 @@ interface ProjectDetailModalProps {
   onSelectProject: (project: Project) => void;
 }
 
+interface SectionSlideViewerProps {
+  images: string[];
+  title: string;
+  onZoom: (url: string) => void;
+  compact?: boolean;
+}
+
+const SectionSlideViewer: React.FC<SectionSlideViewerProps> = ({
+  images,
+  title,
+  onZoom,
+  compact = false,
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const prevSlide = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
+  };
+
+  const nextSlide = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
+  };
+
+  const currentImage = images[currentIndex] || images[0];
+
+  if (compact) {
+    // Compact mobile slider for inside mobile device simulator (100% width of device screen)
+    return (
+      <div className="relative w-full bg-slate-950 flex flex-col overflow-hidden">
+        {/* Mobile slide header */}
+        <div className="flex items-center justify-between px-3.5 py-1.5 bg-slate-900 text-white text-[10px] font-mono border-b border-slate-800 shrink-0">
+          <span className="font-bold text-pink-400 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899] animate-pulse" />
+            <span>SLIDE {currentIndex + 1} / {images.length}</span>
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={prevSlide}
+              aria-label="이전 슬라이드"
+              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-white active:scale-95 transition-colors"
+            >
+              <ChevronLeft className="w-3 h-3" />
+            </button>
+            <button
+              onClick={nextSlide}
+              aria-label="다음 슬라이드"
+              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-white active:scale-95 transition-colors"
+            >
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile slide image - Full Width 100% */}
+        <div 
+          className="relative w-full bg-white flex items-center justify-center overflow-hidden cursor-zoom-in group/mobslide"
+          onClick={() => onZoom(currentImage)}
+        >
+          <img
+            key={currentIndex}
+            src={currentImage}
+            alt={`${title} - slide ${currentIndex + 1}`}
+            referrerPolicy="no-referrer"
+            className="w-full h-auto block select-none"
+          />
+
+          {/* Quick Tap Navigation Side Arrows */}
+          <button
+            onClick={prevSlide}
+            aria-label="이전 슬라이드"
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center border border-white/20 shadow-lg active:scale-90 transition-transform"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={nextSlide}
+            aria-label="다음 슬라이드"
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center border border-white/20 shadow-lg active:scale-90 transition-transform"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Mobile pagination dots */}
+        <div className="py-2 bg-slate-900 flex items-center justify-center gap-1.5 shrink-0 border-t border-slate-800">
+          {images.map((_, dotIdx) => (
+            <button
+              key={dotIdx}
+              onClick={() => setCurrentIndex(dotIdx)}
+              className={`h-1.5 rounded-full transition-all ${
+                dotIdx === currentIndex ? 'w-5 bg-[#EC4899]' : 'w-1.5 bg-slate-600'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-200 luxury-card-shadow flex flex-col">
+      {/* Top Slide Header Bar */}
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3 bg-slate-900 text-white border-b border-slate-800">
+        <div className="flex items-center gap-2 font-mono text-xs">
+          <span className="w-2 h-2 rounded-full bg-[#EC4899] animate-pulse" />
+          <span className="font-bold text-slate-200">SLIDE CAROUSEL</span>
+          <span className="text-[#EC4899] font-bold">
+            {String(currentIndex + 1).padStart(2, '0')}
+          </span>
+          <span className="text-slate-500">/</span>
+          <span className="text-slate-400">
+            {String(images.length).padStart(2, '0')}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={prevSlide}
+              aria-label="이전 슬라이드"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors border border-slate-700 active:scale-95 flex items-center gap-1 text-xs font-mono"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">이전</span>
+            </button>
+            <button
+              onClick={nextSlide}
+              aria-label="다음 슬라이드"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors border border-slate-700 active:scale-95 flex items-center gap-1 text-xs font-mono"
+            >
+              <span className="hidden sm:inline">다음</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <button
+            onClick={() => onZoom(currentImage)}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#EC4899] hover:bg-[#DB2777] text-white text-xs font-bold transition-all shadow-sm active:scale-95 ml-1"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+            <span>확대보기</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Slide Image Display */}
+      <div
+        className="relative bg-slate-950 flex items-center justify-center min-h-[360px] max-h-[720px] overflow-hidden cursor-zoom-in group/slide"
+        onClick={() => onZoom(currentImage)}
+      >
+        <AnimatePresence mode="wait">
+          <motion.img
+            key={currentIndex}
+            src={currentImage}
+            alt={`${title} - slide ${currentIndex + 1}`}
+            referrerPolicy="no-referrer"
+            initial={{ opacity: 0, x: 25 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -25 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="w-full h-auto max-h-[720px] object-contain block mx-auto select-none"
+          />
+        </AnimatePresence>
+
+        {/* Floating Side Arrow Buttons on Hover */}
+        <button
+          onClick={prevSlide}
+          aria-label="이전 슬라이드"
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center opacity-0 group-hover/slide:opacity-100 transition-all border border-white/20 shadow-xl hover:scale-105"
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <button
+          onClick={nextSlide}
+          aria-label="다음 슬라이드"
+          className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center opacity-0 group-hover/slide:opacity-100 transition-all border border-white/20 shadow-xl hover:scale-105"
+        >
+          <ChevronRight className="w-6 h-6" />
+        </button>
+
+        {/* Floating zoom indicator hint */}
+        <div className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white text-[11px] font-mono px-3 py-1 rounded-md opacity-0 group-hover/slide:opacity-100 transition-opacity border border-white/20 pointer-events-none">
+          CLICK TO EXPAND
+        </div>
+      </div>
+
+      {/* Bottom Thumbnail Strip */}
+      <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-center gap-2.5 overflow-x-auto">
+        {images.map((img, tIdx) => (
+          <button
+            key={tIdx}
+            onClick={() => setCurrentIndex(tIdx)}
+            className={`relative rounded-lg overflow-hidden transition-all shrink-0 ${
+              tIdx === currentIndex
+                ? 'ring-2 ring-[#EC4899] scale-105 shadow-md opacity-100'
+                : 'opacity-50 hover:opacity-85 border border-slate-700'
+            }`}
+          >
+            <img
+              src={img}
+              alt={`Thumbnail ${tIdx + 1}`}
+              referrerPolicy="no-referrer"
+              className="w-14 h-14 sm:w-16 sm:h-16 object-cover"
+            />
+            <span className="absolute bottom-0 inset-x-0 bg-black/75 text-[10px] font-mono text-center text-white py-0.5 font-bold">
+              0{tIdx + 1}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
   project,
   allProjects,
@@ -54,9 +269,9 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
   if (!project) return null;
 
-  const isSns = project.projectType === 'sns-content' || project.category.includes('SNS') || (project.snsSlides && project.snsSlides.length > 0);
-  const isBanner = project.projectType === 'main-banner' || project.category.includes('BANNER') || (project.bannerVariations && project.bannerVariations.length > 0);
-  const isVideo = project.projectType === 'video-motion' || project.category.includes('VIDEO') || Boolean(project.videoUrl) || Boolean(project.videoKeyframes);
+  const isSns = (project.projectType === 'sns-content' || project.category.toUpperCase().includes('SNS')) && Boolean(project.snsSlides && project.snsSlides.length > 0);
+  const isBanner = (project.projectType === 'main-banner' || project.category.toUpperCase().includes('BANNER')) && Boolean(project.bannerVariations && project.bannerVariations.length > 0);
+  const isVideo = (project.projectType === 'video-motion' || project.category.toUpperCase().includes('VIDEO')) && Boolean(project.videoUrl || project.videoKeyframes || (project.videoVariations && project.videoVariations.length > 0));
 
   // Find previous and next project for navigation
   const currentIndex = allProjects.findIndex((p) => p.id === project.id);
@@ -65,7 +280,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-0 sm:p-6 lg:p-10">
+      <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-6 lg:p-8">
         {/* Modal Backdrop click to close */}
         <div 
           className="fixed inset-0" 
@@ -80,10 +295,10 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 30 }}
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-full max-w-5xl my-0 sm:my-4 bg-white sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 z-10 max-h-[92vh] overflow-y-auto"
+          className="relative w-full max-w-5xl h-[94vh] sm:h-[90vh] bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 z-10"
         >
           {/* Sticky Top Header Bar */}
-          <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-6 sm:px-8 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="shrink-0 bg-white/95 backdrop-blur-md px-6 sm:px-8 py-4 border-b border-slate-200 flex items-center justify-between z-20">
             <div className="flex items-center gap-3">
               <span className="font-mono text-xs font-bold text-[#EC4899] px-2.5 py-1 rounded-md bg-[#FDF2F8] border border-[#FBCFE8]">
                 PROJECT {project.number}
@@ -136,7 +351,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           </div>
 
           {/* Modal Main Scrollable Content */}
-          <div className="p-6 sm:p-12 lg:p-14 space-y-16">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-6 sm:p-12 lg:p-14 space-y-16">
             {/* Title & Header Section */}
             <div className="space-y-4 max-w-3xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FDF2F8] text-[#DB2777] text-xs font-mono border border-[#FBCFE8] font-bold">
@@ -181,7 +396,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
             </div>
 
             {/* 01. BACKGROUND & CHALLENGE */}
-            <div className="space-y-4 p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 luxury-card-shadow">
+            <div className="space-y-6 p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 luxury-card-shadow">
               <div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#EC4899]">
                 <span className="font-bold px-2 py-0.5 rounded bg-[#FDF2F8] border border-[#FBCFE8]">01</span>
                 <span className="font-bold">BACKGROUND & DESIGN STRATEGY</span>
@@ -189,6 +404,28 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
               <p className="text-base sm:text-lg text-[#334155] leading-relaxed">
                 {project.background}
               </p>
+
+              {/* Key Design Focus Points (For Detail Page / Non-Video Projects) */}
+              {!isVideo && project.designFocus && project.designFocus.length > 0 && (
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <span className="text-xs font-mono font-bold text-slate-500 block tracking-wider">
+                    KEY DESIGN FOCUS POINTS
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {project.designFocus.map((df, dfIdx) => (
+                      <div key={df.id || dfIdx} className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 flex flex-col justify-between">
+                        <div className="text-xs font-bold text-slate-900 font-mono flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899]" />
+                          <span>{df.title}</span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed pt-1">
+                          {df.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 02. SPECIALIZED INTERACTIVE SHOWCASE BY PROJECT TYPE */}
@@ -207,8 +444,8 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                 </div>
 
                 {/* Instagram Mockup Frame */}
-                <div className="flex flex-col items-center justify-center py-8 bg-[#F8FAFC] rounded-3xl border border-slate-200 p-4 sm:p-8">
-                  <div className="w-full max-w-[440px] bg-white rounded-3xl border-2 border-slate-200 shadow-2xl overflow-hidden flex flex-col">
+                <div className="flex flex-col items-center justify-center py-8 bg-[#F8FAFC] rounded-3xl border border-slate-200 p-4 sm:p-8 overflow-hidden">
+                  <div className="w-full max-w-[440px] bg-white rounded-3xl border-2 border-slate-200 shadow-2xl overflow-hidden flex flex-col [transform:translateZ(0)] isolate">
                     {/* Instagram Post Header */}
                     <div className="px-4 py-3.5 flex items-center justify-between border-b border-slate-100">
                       <div className="flex items-center gap-3">
@@ -395,7 +632,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
             {/* --- CASE C: MULTI-SIZE VIDEO & MOTION GRAPHICS SHOWCASE --- */}
             {isVideo && (() => {
               // Prepare variations array: if project.videoVariations is supplied, use it; otherwise fallback to default single variation
-              const variations: VideoVariation[] = (project.videoVariations && project.videoVariations.length > 0)
+              const rawVariations = (project.videoVariations && project.videoVariations.length > 0)
                 ? project.videoVariations
                 : [
                     {
@@ -409,7 +646,9 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                     }
                   ];
 
-              const currentVar = variations[activeVideoVarIndex] || variations[0];
+              const variations: VideoVariation[] = rawVariations.filter(Boolean);
+              const safeVarIndex = (activeVideoVarIndex >= 0 && activeVideoVarIndex < variations.length) ? activeVideoVarIndex : 0;
+              const currentVar = variations[safeVarIndex] || variations[0];
               const isShortform = currentVar.type === '9:16' || (!currentVar.type.includes('16:9') && !currentVar.type.includes('1:1'));
               const isPcWide = currentVar.type === '16:9';
               const isSquare = currentVar.type === '1:1';
@@ -421,13 +660,13 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
                     <div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#EC4899]">
                       <span className="font-bold px-2 py-0.5 rounded bg-[#FDF2F8] border border-[#FBCFE8]">02</span>
-                      <span className="font-bold">MULTI-SIZE VIDEO & MOTION GRAPHICS SHOWCASE</span>
+                      <span className="font-bold">VIDEO & MOTION GRAPHICS SHOWCASE</span>
                     </div>
                     
                     {/* Multi-Size Mode Indicator Badge */}
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-bold border border-slate-200">
-                        {hasMultiSizes ? `3가지 멀티 사이즈 지원 (${variations.length} FORMATS)` : '숏폼 버전 단독 포맷 (9:16)'}
+                        {hasMultiSizes ? `${variations.length}가지 멀티 사이즈 지원 (${variations.length} FORMATS)` : `단독 포맷 (${currentVar.label})`}
                       </span>
                     </div>
                   </div>
@@ -443,9 +682,15 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                           {currentVar.dimension}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className={`grid gap-2.5 ${
+                        variations.length === 2
+                          ? 'grid-cols-1 sm:grid-cols-2'
+                          : variations.length === 3
+                          ? 'grid-cols-1 sm:grid-cols-3'
+                          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+                      }`}>
                         {variations.map((v, idx) => {
-                          const isSelected = activeVideoVarIndex === idx;
+                          const isSelected = safeVarIndex === idx;
                           const IconComp = v.type === '16:9' ? Monitor : v.type === '1:1' ? Square : Smartphone;
                           return (
                             <button
@@ -487,61 +732,65 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                     {/* CASE 1: 9:16 Mobile Shortform Smartphone Mockup */}
                     {isShortform && (
                       <div className="flex flex-col lg:flex-row gap-8 items-center justify-center">
-                        <div className="w-[300px] sm:w-[320px] h-[580px] bg-slate-950 rounded-[40px] border-[8px] border-slate-900 shadow-2xl overflow-hidden relative flex-shrink-0 flex flex-col justify-between">
-                          {/* Top status */}
-                          <div className="z-10 px-5 pt-3 pb-2 flex items-center justify-between text-[10px] text-white font-mono bg-gradient-to-b from-black/60 to-transparent">
-                            <span>09:41</span>
-                            <span className="text-pink-400 font-bold flex items-center gap-1">
-                              <Smartphone className="w-3 h-3" />
-                              <span>REELS · 15s</span>
-                            </span>
-                          </div>
-
-                          {/* Video Player / Media */}
-                          <div className="absolute inset-0 z-0">
-                            {currentVar.videoUrl || project.videoUrl ? (
-                              <video
-                                src={currentVar.videoUrl || project.videoUrl}
-                                autoPlay
-                                loop
-                                muted={isVideoMuted}
-                                playsInline
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <img
-                                src={currentVar.coverImage || project.coverImage}
-                                alt={project.title}
-                                referrerPolicy="no-referrer"
-                                className="w-full h-full object-cover"
-                              />
-                            )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/30 pointer-events-none" />
-                          </div>
-
-                          {/* Sound toggle button */}
-                          <button
-                            onClick={() => setIsVideoMuted(!isVideoMuted)}
-                            className="absolute top-12 right-4 z-20 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors backdrop-blur-sm"
-                            title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
-                          >
-                            {isVideoMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-300" /> : <Volume2 className="w-3.5 h-3.5 text-pink-400" />}
-                          </button>
-
-                          {/* Bottom Reel Caption Simulation */}
-                          <div className="z-10 p-5 space-y-2 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center text-[10px] font-bold">
-                                LM
-                              </div>
-                              <span className="text-xs font-bold">lumiere_official</span>
+                        {/* Smartphone outer shell */}
+                        <div className="w-[300px] sm:w-[320px] h-[580px] sm:h-[620px] bg-slate-900 rounded-[40px] sm:rounded-[44px] p-2.5 shadow-2xl border border-slate-700/50 flex-shrink-0 flex flex-col relative overflow-hidden [transform:translateZ(0)] isolate">
+                          {/* Inner Screen */}
+                          <div className="w-full h-full bg-slate-950 rounded-[30px] sm:rounded-[34px] overflow-hidden relative flex flex-col justify-between [transform:translateZ(0)] isolate">
+                            {/* Top status */}
+                            <div className="z-10 px-5 pt-3 pb-2 flex items-center justify-between text-[10px] text-white font-mono bg-gradient-to-b from-black/70 to-transparent shrink-0">
+                              <span>09:41</span>
+                              <span className="text-pink-400 font-bold flex items-center gap-1">
+                                <Smartphone className="w-3 h-3" />
+                                <span>REELS / SHORTS</span>
+                              </span>
                             </div>
-                            <p className="text-[11px] text-slate-200 line-clamp-2 leading-relaxed">
-                              {project.summary}
-                            </p>
-                            <div className="flex items-center gap-2 text-[10px] font-mono text-pink-300">
-                              <Sparkles className="w-3 h-3" />
-                              <span>After Effects Motion Graphic · Sound Sync</span>
+
+                            {/* Video Player / Media */}
+                            <div className="absolute inset-0 z-0">
+                              {currentVar.videoUrl || project.videoUrl ? (
+                                <video
+                                  src={currentVar.videoUrl || project.videoUrl}
+                                  autoPlay
+                                  loop
+                                  muted={isVideoMuted}
+                                  playsInline
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <img
+                                  src={currentVar.coverImage || project.coverImage}
+                                  alt={project.title}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover"
+                                />
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/30 pointer-events-none" />
+                            </div>
+
+                            {/* Sound toggle button */}
+                            <button
+                              onClick={() => setIsVideoMuted(!isVideoMuted)}
+                              className="absolute top-12 right-4 z-20 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors backdrop-blur-sm"
+                              title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
+                            >
+                              {isVideoMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-300" /> : <Volume2 className="w-3.5 h-3.5 text-pink-400" />}
+                            </button>
+
+                            {/* Bottom Reel Caption Simulation */}
+                            <div className="z-10 p-5 space-y-2 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white shrink-0">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center text-[10px] font-bold">
+                                  LM
+                                </div>
+                                <span className="text-xs font-bold">lumiere_official</span>
+                              </div>
+                              <p className="text-[11px] text-slate-200 line-clamp-2 leading-relaxed">
+                                {project.summary}
+                              </p>
+                              <div className="flex items-center gap-2 text-[10px] font-mono text-pink-300">
+                                <Sparkles className="w-3 h-3" />
+                                <span>After Effects Motion Graphic · Sound Sync</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -550,7 +799,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                         <div className="flex-1 space-y-4 w-full">
                           <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
                             <Layers className="w-4 h-4 text-[#EC4899]" />
-                            <span>15초 모션 그래픽 타임라인 & 스토리보드 구성</span>
+                            <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
                           </h3>
 
                           <div className="space-y-3">
@@ -588,7 +837,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                     {/* CASE 2: 16:9 PC / Web Cinema Wide Player */}
                     {isPcWide && (
-                      <div className="space-y-6">
+                      <div className="space-y-8">
                         <div className="rounded-3xl bg-slate-950 p-4 sm:p-6 shadow-2xl border-2 border-slate-800 space-y-4">
                           {/* Cinema Player Chrome Bar */}
                           <div className="flex items-center justify-between text-xs text-slate-400 pb-3 border-b border-slate-800 font-mono">
@@ -644,11 +893,49 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                             <div className="flex items-center gap-3">
                               <span className="text-white font-bold">{project.title} — PC Web Motion</span>
                               <span className="text-slate-500">|</span>
-                              <span>00:15 / 00:15</span>
+                              <span className="text-pink-400 font-semibold">1080P FULL HD · 60FPS</span>
                             </div>
                             <div className="text-[11px] text-pink-400">
                               웹사이트 메인 히어로 비디오 & 브랜드 유튜브 최적화
                             </div>
+                          </div>
+                        </div>
+
+                        {/* Storyboard Keyframes for PC Wide */}
+                        <div className="space-y-4 pt-2">
+                          <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-[#EC4899]" />
+                            <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
+                          </h3>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                            {(project.videoKeyframes || [
+                              {
+                                timestamp: "00:00 - 00:03",
+                                title: "01. INTRO HOOK (유리알 광택 클로즈업)",
+                                description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
+                              },
+                              {
+                                timestamp: "00:04 - 00:09",
+                                title: "02. USP SHADE TRANSITION (색상 스위칭)",
+                                description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
+                              },
+                              {
+                                timestamp: "00:10 - 00:15",
+                                title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
+                                description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
+                              }
+                            ]).map((frame, fIdx) => (
+                              <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 flex flex-col justify-between">
+                                <div className="flex items-center justify-between text-xs font-mono">
+                                  <span className="font-bold text-[#0F172A]">{frame.title}</span>
+                                  <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed pt-1">
+                                  {frame.description}
+                                </p>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
@@ -656,7 +943,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                     {/* CASE 3: 1:1 Square SNS Feed / Ad Player */}
                     {isSquare && (
-                      <div className="flex flex-col items-center justify-center space-y-6">
+                      <div className="flex flex-col items-center justify-center space-y-8">
                         <div className="w-full max-w-[460px] bg-white rounded-3xl border-2 border-slate-200 shadow-2xl overflow-hidden flex flex-col">
                           {/* Square Post Header */}
                           <div className="px-4 py-3.5 flex items-center justify-between border-b border-slate-100">
@@ -719,6 +1006,44 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                             </p>
                           </div>
                         </div>
+
+                        {/* Storyboard Keyframes for Square */}
+                        <div className="w-full space-y-4 pt-2">
+                          <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-[#EC4899]" />
+                            <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
+                          </h3>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                            {(project.videoKeyframes || [
+                              {
+                                timestamp: "00:00 - 00:03",
+                                title: "01. INTRO HOOK (유리알 광택 클로즈업)",
+                                description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
+                              },
+                              {
+                                timestamp: "00:04 - 00:09",
+                                title: "02. USP SHADE TRANSITION (색상 스위칭)",
+                                description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
+                              },
+                              {
+                                timestamp: "00:10 - 00:15",
+                                title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
+                                description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
+                              }
+                            ]).map((frame, fIdx) => (
+                              <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 flex flex-col justify-between">
+                                <div className="flex items-center justify-between text-xs font-mono">
+                                  <span className="font-bold text-[#0F172A]">{frame.title}</span>
+                                  <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed pt-1">
+                                  {frame.description}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -735,64 +1060,113 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                     <span className="font-bold">DETAILED SECTIONS & VISUALS</span>
                   </div>
                   <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md font-bold">
-                    {project.sections.length} KEY SECTIONS
+                    {(project.sections || []).length} KEY SECTIONS
                   </span>
                 </div>
 
                 {/* View Mode: Mobile Simulator vs Editorial Full Width */}
                 {viewMode === 'mobile' ? (
                   /* Mobile Device Simulator Frame */
-                  <div className="flex flex-col items-center justify-center py-8 bg-[#F8FAFC] rounded-2xl border border-slate-200">
-                    <div className="text-xs font-mono text-slate-500 mb-4 flex items-center gap-2 font-bold">
+                  <div className="flex flex-col items-center justify-center py-6 sm:py-8 bg-[#0F172A] rounded-2xl border border-slate-800 p-3 sm:p-6 overflow-hidden">
+                    <div className="text-xs font-mono text-slate-400 mb-4 flex items-center gap-2 font-bold">
                       <Smartphone className="w-4 h-4 text-[#EC4899]" />
-                      <span>MOBILE DETAIL PAGE SCROLL PREVIEW (375px)</span>
+                      <span>MOBILE DETAIL PAGE SCROLL PREVIEW</span>
                     </div>
-                    <div className="w-[360px] sm:w-[390px] h-[720px] overflow-y-auto bg-white rounded-[36px] border-[8px] border-slate-900 shadow-2xl p-0 relative">
-                      {/* Simulated mobile status bar */}
-                      <div className="sticky top-0 bg-white/95 backdrop-blur z-20 px-6 py-2.5 flex justify-between items-center text-[10px] font-mono border-b border-slate-100 text-slate-800">
-                        <span>09:41</span>
-                        <span className="font-bold text-[#EC4899]">5G 100%</span>
-                      </div>
 
-                      {/* Sequential detail page slices inside mobile container */}
-                      <div className="p-0">
-                        {project.sections.map((section, sIdx) => {
-                          const sliceImages = (section.images && section.images.length > 0)
-                            ? section.images
-                            : [section.imageUrl];
+                    {/* Outer Phone Shell (Strictly clipped with hardware acceleration) */}
+                    <div className="relative w-full max-w-[340px] sm:max-w-[375px] h-[660px] sm:h-[700px] bg-slate-950 rounded-[44px] sm:rounded-[48px] p-2.5 sm:p-3 shadow-2xl border-[3px] border-slate-700/80 flex flex-col overflow-hidden [transform:translateZ(0)] isolate select-none">
+                      {/* Inner Screen Display (Hard clipped with rounded corners) */}
+                      <div className="relative w-full h-full bg-white rounded-[34px] sm:rounded-[38px] overflow-hidden flex flex-col [transform:translateZ(0)] isolate">
+                        {/* Sleek Compact Dark Status Bar (Single Line with Integrated Notch) */}
+                        <div className="shrink-0 bg-slate-950 text-white z-20 px-4 py-2 flex items-center justify-between border-b border-slate-800/80 select-none">
+                          <span className="text-[11px] font-mono font-bold tracking-tight text-slate-200">09:41</span>
+                          
+                          {/* Compact Dynamic Island Notch Pill */}
+                          <div className="w-20 h-3 bg-black rounded-full flex items-center justify-center gap-1.5 px-2 border border-slate-800 pointer-events-none">
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                            <div className="w-6 h-1 bg-slate-800 rounded-full" />
+                          </div>
 
-                          return (
-                            <div key={section.id || sIdx} className="p-0">
-                              {/* Seamless sliced images stacking */}
-                              <div className="flex flex-col">
-                                {sliceImages.map((cutUrl, cIdx) => (
-                                  <img
-                                    key={cIdx}
-                                    src={cutUrl}
-                                    alt={`${section.title} cut ${cIdx + 1}`}
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-auto block object-cover"
-                                  />
-                                ))}
-                              </div>
-                              {section.caption && (
-                                <div className="p-3 bg-[#F8FAFC] text-[11px] text-slate-600 border-t border-b border-slate-100 font-sans">
-                                  {section.caption}
+                          <div className="text-[10px] font-mono font-bold text-pink-400 flex items-center gap-1">
+                            <span className="text-slate-300">5G</span>
+                            <span>100%</span>
+                          </div>
+                        </div>
+
+                        {/* Screen Scrollable Viewport (Scrollbar is fully enclosed between top notch and bottom bar) */}
+                        <div className="flex-1 w-full overflow-y-auto overflow-x-hidden scrollbar-thin [overscroll-behavior:contain]">
+                          {/* Sequential detail page slices inside mobile container */}
+                          <div className="flex flex-col">
+                            {(project.sections || []).map((section, sIdx) => {
+                              const rawImages = (section.images && section.images.length > 0)
+                                ? section.images
+                                : (section.imageUrl ? [section.imageUrl] : []);
+                              const sliceImages = rawImages.filter(Boolean);
+
+                              if (sliceImages.length === 0) return null;
+
+                              const isSlide = (section.layoutMode === 'slide' || section.layoutMode === 'carousel') && sliceImages.length > 1;
+
+                              if (isSlide) {
+                                return (
+                                  <div key={section.id || sIdx} className="p-0 flex flex-col border-b border-slate-100">
+                                    <SectionSlideViewer
+                                      images={sliceImages}
+                                      title={section.title}
+                                      onZoom={setZoomImage}
+                                      compact={true}
+                                    />
+                                    {section.caption && (
+                                      <div className="p-3 bg-[#F8FAFC] text-[11px] text-slate-600 border-t border-slate-100 font-sans leading-relaxed">
+                                        {section.caption}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={section.id || sIdx} className="p-0 flex flex-col">
+                                  {/* Seamless sliced images stacking */}
+                                  <div className="flex flex-col">
+                                    {sliceImages.map((cutUrl, cIdx) => (
+                                      <img
+                                        key={cIdx}
+                                        src={cutUrl}
+                                        alt={`${section.title} cut ${cIdx + 1}`}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-auto block object-cover"
+                                      />
+                                    ))}
+                                  </div>
+                                  {section.caption && (
+                                    <div className="p-3.5 bg-[#F8FAFC] text-[11px] text-slate-600 border-t border-b border-slate-100 font-sans leading-relaxed">
+                                      {section.caption}
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                          {/* Safe spacing at bottom */}
+                          <div className="h-3 bg-white" />
+                        </div>
+
+                        {/* Bottom Home Indicator Bar (Dark theme matching bezel) */}
+                        <div className="shrink-0 bg-slate-950 py-2 flex items-center justify-center border-t border-slate-800/80 z-20">
+                          <div className="w-20 h-1 bg-slate-600 rounded-full" />
+                        </div>
                       </div>
                     </div>
                   </div>
                 ) : (
                   /* Editorial Desktop Layout */
                   <div className="space-y-14">
-                    {project.sections.map((section, idx) => {
-                      const sliceImages = (section.images && section.images.length > 0)
+                    {(project.sections || []).map((section, idx) => {
+                      const rawImages = (section.images && section.images.length > 0)
                         ? section.images
-                        : [section.imageUrl];
+                        : (section.imageUrl ? [section.imageUrl] : []);
+                      const sliceImages = rawImages.filter(Boolean);
                       const isMultiCut = sliceImages.length > 1;
                       const mode = section.layoutMode || (isMultiCut ? 'seamless' : 'spaced');
 
@@ -805,84 +1179,90 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                             <span className="font-bold text-[#0F172A] flex items-center gap-2">
                               <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899]"></span>
                               <span>{section.title}</span>
-                              {isMultiCut && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 border border-pink-200 font-normal">
-                                  {sliceImages.length} 컷 연속 구성
-                                </span>
-                              )}
                             </span>
-                            <button
-                              onClick={() => setZoomImage(sliceImages[0])}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#FDF2F8] text-[#DB2777] hover:bg-[#FBCFE8] text-[11px] transition-colors border border-[#FBCFE8] font-bold"
-                            >
-                              <ZoomIn className="w-3.5 h-3.5 text-[#EC4899]" />
-                              <span>확대보기 (ZOOM)</span>
-                            </button>
+                            {sliceImages.length > 0 && (
+                              <button
+                                onClick={() => setZoomImage(sliceImages[0])}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#FDF2F8] text-[#DB2777] hover:bg-[#FBCFE8] text-[11px] transition-colors border border-[#FBCFE8] font-bold"
+                              >
+                                <ZoomIn className="w-3.5 h-3.5 text-[#EC4899]" />
+                                <span>확대보기 (ZOOM)</span>
+                              </button>
+                            )}
                           </div>
 
-                          {/* Mode: Seamless continuous vertical stack (Standard for e-commerce detailed landing cuts) */}
-                          {mode === 'seamless' ? (
-                            <div className="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 luxury-card-shadow flex flex-col">
-                              {sliceImages.map((cutUrl, cIdx) => (
-                                <div
-                                  key={cIdx}
-                                  onClick={() => setZoomImage(cutUrl)}
-                                  className="relative cursor-zoom-in group/cut"
-                                >
-                                  <img
-                                    src={cutUrl}
-                                    alt={`${section.title} - cut ${cIdx + 1}`}
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-auto block object-cover"
-                                  />
-                                  <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-mono px-2.5 py-1 rounded-md opacity-0 group-hover/cut:opacity-100 transition-opacity border border-white/20">
-                                    클릭하여 컷 #{cIdx + 1} 확대
+                          {/* Section Image Layouts based on layoutMode */}
+                          {sliceImages.length > 0 && (
+                            (mode === 'slide' || mode === 'carousel') ? (
+                              /* Interactive Horizontal Slide / Carousel Layout */
+                              <SectionSlideViewer
+                                images={sliceImages}
+                                title={section.title}
+                                onZoom={setZoomImage}
+                              />
+                            ) : mode === 'seamless' ? (
+                              <div className="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 luxury-card-shadow flex flex-col">
+                                {sliceImages.map((cutUrl, cIdx) => (
+                                  <div
+                                    key={cIdx}
+                                    onClick={() => setZoomImage(cutUrl)}
+                                    className="relative cursor-zoom-in group/cut"
+                                  >
+                                    <img
+                                      src={cutUrl}
+                                      alt={`${section.title} - cut ${cIdx + 1}`}
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-auto block object-cover"
+                                    />
+                                    <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-mono px-2.5 py-1 rounded-md opacity-0 group-hover/cut:opacity-100 transition-opacity border border-white/20">
+                                      클릭하여 확대
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : mode === 'grid' ? (
-                            /* 2-Columns Grid Layout */
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              {sliceImages.map((cutUrl, cIdx) => (
-                                <div
-                                  key={cIdx}
-                                  onClick={() => setZoomImage(cutUrl)}
-                                  className="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 cursor-zoom-in luxury-card-shadow group/card"
-                                >
-                                  <img
-                                    src={cutUrl}
-                                    alt={`${section.title} - cut ${cIdx + 1}`}
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-auto object-cover transition-transform duration-500 group-hover/card:scale-[1.01]"
-                                  />
-                                  <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[11px] font-mono px-3 py-1 rounded-md opacity-0 group-hover/card:opacity-100 transition-opacity border border-white/20">
-                                    CLICK TO EXPAND
+                                ))}
+                              </div>
+                            ) : mode === 'grid' ? (
+                              /* 2-Columns Grid Layout */
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {sliceImages.map((cutUrl, cIdx) => (
+                                  <div
+                                    key={cIdx}
+                                    onClick={() => setZoomImage(cutUrl)}
+                                    className="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 cursor-zoom-in luxury-card-shadow group/card"
+                                  >
+                                    <img
+                                      src={cutUrl}
+                                      alt={`${section.title} - cut ${cIdx + 1}`}
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-auto object-cover transition-transform duration-500 group-hover/card:scale-[1.01]"
+                                    />
+                                    <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[11px] font-mono px-3 py-1 rounded-md opacity-0 group-hover/card:opacity-100 transition-opacity border border-white/20">
+                                      CLICK TO EXPAND
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            /* Spaced Layout */
-                            <div className="space-y-4">
-                              {sliceImages.map((cutUrl, cIdx) => (
-                                <div
-                                  key={cIdx}
-                                  onClick={() => setZoomImage(cutUrl)}
-                                  className="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 cursor-zoom-in luxury-card-shadow group/card"
-                                >
-                                  <img
-                                    src={cutUrl}
-                                    alt={`${section.title} - cut ${cIdx + 1}`}
-                                    referrerPolicy="no-referrer"
-                                    className="w-full h-auto object-cover transition-transform duration-500 group-hover/card:scale-[1.01]"
-                                  />
-                                  <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[11px] font-mono px-3 py-1 rounded-md opacity-0 group-hover/card:opacity-100 transition-opacity border border-white/20">
-                                    CLICK TO EXPAND
+                                ))}
+                              </div>
+                            ) : (
+                              /* Spaced Layout */
+                              <div className="space-y-4">
+                                {sliceImages.map((cutUrl, cIdx) => (
+                                  <div
+                                    key={cIdx}
+                                    onClick={() => setZoomImage(cutUrl)}
+                                    className="relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 cursor-zoom-in luxury-card-shadow group/card"
+                                  >
+                                    <img
+                                      src={cutUrl}
+                                      alt={`${section.title} - cut ${cIdx + 1}`}
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-auto object-cover transition-transform duration-500 group-hover/card:scale-[1.01]"
+                                    />
+                                    <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm text-white text-[11px] font-mono px-3 py-1 rounded-md opacity-0 group-hover/card:opacity-100 transition-opacity border border-white/20">
+                                      CLICK TO EXPAND
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                            )
                           )}
 
                           {/* Section Caption Note */}

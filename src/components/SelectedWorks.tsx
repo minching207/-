@@ -111,7 +111,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
     }
     if (cat.includes('VIDEO') || cat.includes('MOTION') || type === 'video-motion') {
       return {
-        label: '영상·모션 · 15s REELS',
+        label: '영상·모션 그래픽',
         icon: PlayCircle,
         colorClass: 'bg-pink-50 text-pink-700 border-pink-200',
       };
@@ -234,7 +234,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
                       {isVideo && (
                         <div className="absolute top-4 right-4 bg-[#0F172A]/90 backdrop-blur-md text-white font-mono text-[11px] px-3 py-1.5 rounded-lg border border-pink-400/40 font-bold shadow-md flex items-center gap-1.5 animate-pulse">
                           <PlayCircle className="w-3.5 h-3.5 text-[#EC4899]" />
-                          <span>{project.videoVariations && project.videoVariations.length > 1 ? '3-SIZES MULTI VIDEO' : '15s 숏폼 VIDEO'}</span>
+                          <span>{project.videoVariations && project.videoVariations.length > 1 ? `${project.videoVariations.length}-SIZES MULTI VIDEO` : 'MOTION & VIDEO'}</span>
                         </div>
                       )}
 
