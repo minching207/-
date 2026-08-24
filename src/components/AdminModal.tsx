@@ -1,0 +1,1287 @@
+import React, { useState } from 'react';
+import {
+  X,
+  Lock,
+  Unlock,
+  Plus,
+  Trash2,
+  Edit2,
+  Save,
+  RotateCcw,
+  Download,
+  Upload,
+  ArrowUp,
+  ArrowDown,
+  Layers,
+  Sparkles,
+  CheckCircle,
+  Eye,
+  Settings,
+  HelpCircle,
+} from 'lucide-react';
+import { motion } from 'motion/react';
+import { SiteContent, Project, DesignFocusItem, ProjectSection, ApproachStep, ExperienceItem } from '../types';
+import { ADMIN_PASSWORD, setAdminSession } from '../utils/storage';
+import { MediaFileUpload, MultiImageSliceUpload } from './MediaFileUpload';
+
+interface AdminModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  content: SiteContent;
+  onSaveContent: (newContent: SiteContent) => void;
+  onResetContent: () => void;
+  isAdmin: boolean;
+  setIsAdmin: (val: boolean) => void;
+}
+
+export const AdminModal: React.FC<AdminModalProps> = ({
+  isOpen,
+  onClose,
+  content,
+  onSaveContent,
+  onResetContent,
+  isAdmin,
+  setIsAdmin,
+}) => {
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState(false);
+  const [activeTab, setActiveTab] = useState<'projects' | 'hero' | 'approach' | 'about' | 'contact' | 'backup'>('projects');
+  
+  // Local editable draft state
+  const [draft, setDraft] = useState<SiteContent>(content);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Selected project for editing in projects tab
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isCreatingNewProject, setIsCreatingNewProject] = useState(false);
+
+  // Reset draft when content changes
+  React.useEffect(() => {
+    setDraft(content);
+  }, [content]);
+
+  if (!isOpen) return null;
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setAdminSession(true);
+      setAuthError(false);
+      setPasswordInput('');
+    } else {
+      setAuthError(true);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAdmin(false);
+    setAdminSession(false);
+  };
+
+  const handleSave = () => {
+    onSaveContent(draft);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2500);
+  };
+
+  const handleReset = () => {
+    if (window.confirm('모든 포트폴리오 데이터를 초기 샘플 데이터로 복원하시겠습니까? (작성한 내용이 초기화됩니다)')) {
+      onResetContent();
+      setEditingProject(null);
+      setIsCreatingNewProject(false);
+    }
+  };
+
+  const handleExportJson = () => {
+    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `portfolio-content-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target?.result as string);
+        if (parsed.hero && parsed.projects && parsed.about) {
+          setDraft(parsed);
+          onSaveContent(parsed);
+          alert('데이터를 성공적으로 불러왔습니다.');
+        } else {
+          alert('올바른 포트폴리오 백업 JSON 형식이 아닙니다.');
+        }
+      } catch (err) {
+        alert('JSON 파싱에 실패했습니다.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Project CRUD helpers
+  const handleMoveProject = (index: number, direction: 'up' | 'down') => {
+    const newProjects = [...draft.projects];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newProjects.length) return;
+    const temp = newProjects[index];
+    newProjects[index] = newProjects[targetIndex];
+    newProjects[targetIndex] = temp;
+    // Re-number projects
+    newProjects.forEach((p, idx) => {
+      p.number = String(idx + 1).padStart(2, '0');
+    });
+    setDraft({ ...draft, projects: newProjects });
+  };
+
+  const handleDeleteProject = (id: string) => {
+    if (window.confirm('이 프로젝트를 삭제하시겠습니까?')) {
+      const filtered = draft.projects.filter((p) => p.id !== id);
+      filtered.forEach((p, idx) => {
+        p.number = String(idx + 1).padStart(2, '0');
+      });
+      setDraft({ ...draft, projects: filtered });
+      if (editingProject?.id === id) {
+        setEditingProject(null);
+      }
+    }
+  };
+
+  const handleSaveEditingProject = (proj: Project) => {
+    let updatedProjects: Project[];
+    if (isCreatingNewProject) {
+      proj.number = String(draft.projects.length + 1).padStart(2, '0');
+      updatedProjects = [...draft.projects, proj];
+    } else {
+      updatedProjects = draft.projects.map((p) => (p.id === proj.id ? proj : p));
+    }
+    setDraft({ ...draft, projects: updatedProjects });
+    setEditingProject(null);
+    setIsCreatingNewProject(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-md flex justify-center p-2 sm:p-6">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.97 }}
+        className="relative w-full max-w-5xl bg-[#181818] text-[#ECECE8] rounded-xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh] border border-[#333330]"
+      >
+        {/* Top Header */}
+        <div className="bg-[#202020] px-6 py-4 border-b border-[#303030] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded bg-[#2C2C2A] text-white">
+              {isAdmin ? <Unlock className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-amber-400" />}
+            </div>
+            <div>
+              <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                <span>포트폴리오 관리자 콘솔</span>
+              </h2>
+              <p className="text-[11px] text-[#888880]">
+                모든 텍스트, 프로젝트 이미지, 접근 방식 및 이력을 실시간 수정합니다.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {isAdmin && (
+              <button
+                onClick={handleSave}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded text-xs font-semibold tracking-wider transition-all ${
+                  saveSuccess ? 'bg-emerald-600 text-white' : 'bg-white text-[#141414] hover:bg-[#EAEAE5]'
+                }`}
+              >
+                {saveSuccess ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>저장 완료!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>변경사항 저장</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-[#333330] text-[#888880] hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        {!isAdmin ? (
+          /* Password Authentication Screen */
+          <div className="p-8 sm:p-14 flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto">
+            <div className="w-14 h-14 rounded-full bg-[#2A2A28] border border-[#3A3A36] flex items-center justify-center text-amber-400">
+              <Lock className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-white">관리자 비밀번호 입력</h3>
+              <p className="text-xs text-[#999990]">
+                포트폴리오 내용 및 프로젝트를 수정하려면 비밀번호를 입력해주세요.
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="w-full space-y-4">
+              <div className="space-y-1 text-left">
+                <input
+                  type="password"
+                  placeholder="비밀번호 4자리"
+                  value={passwordInput}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    setAuthError(false);
+                  }}
+                  autoFocus
+                  className="w-full px-4 py-3 rounded bg-[#242422] border border-[#40403C] text-white text-center text-sm tracking-widest focus:outline-none focus:border-white font-mono"
+                />
+                {authError && (
+                  <p className="text-[11px] text-red-400 text-center pt-1">
+                    비밀번호가 일치하지 않습니다.
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded bg-white text-[#141414] text-xs font-bold uppercase tracking-wider hover:bg-[#EAEAEA]"
+              >
+                관리자 로그인
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* Admin Main Tabs Workspace */
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Nav Tabs */}
+            <div className="bg-[#1E1E1C] px-6 border-b border-[#2C2C28] flex items-center gap-2 overflow-x-auto">
+              {[
+                { id: 'projects', label: '01. 프로젝트 관리 (Works)' },
+                { id: 'hero', label: '02. 메인 히어로 (Hero)' },
+                { id: 'approach', label: '03. 디자인 철학 (Approach)' },
+                { id: 'about', label: '04. 소개 & 스킬 & 이력 (About)' },
+                { id: 'contact', label: '05. 연락처 & 메타 (Contact)' },
+                { id: 'backup', label: '06. 데이터 백업 & 초기화' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    setEditingProject(null);
+                    setIsCreatingNewProject(false);
+                  }}
+                  className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-white text-white font-bold bg-[#262624]'
+                      : 'border-transparent text-[#999990] hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Panels */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+              {/* TAB 1: PROJECTS */}
+              {activeTab === 'projects' && (
+                <div className="space-y-6">
+                  {editingProject ? (
+                    <ProjectEditor
+                      project={editingProject}
+                      onSave={handleSaveEditingProject}
+                      onCancel={() => {
+                        setEditingProject(null);
+                        setIsCreatingNewProject(false);
+                      }}
+                    />
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-base font-bold text-white">프로젝트 목록 ({draft.projects.length}개)</h3>
+                          <p className="text-xs text-[#888880]">
+                            상세페이지 및 콘텐츠 작업물을 추가, 수정, 순서 변경합니다.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newProj: Project = {
+                              id: `proj-${Date.now()}`,
+                              number: String(draft.projects.length + 1).padStart(2, '0'),
+                              title: '신규 상세페이지 프로젝트',
+                              category: 'DETAIL PAGE · CONTENT DESIGN',
+                              summary: '프로젝트의 핵심 특징과 브랜드 이미지를 시각적으로 표현한 상세페이지.',
+                              coverImage: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=85',
+                              tags: ['New Detail Page', 'Ecommerce', 'Promotion'],
+                              role: 'Detail Page Design / Content Planning',
+                              period: '2026.01 — 2026.02',
+                              tools: 'Photoshop / Illustrator / After Effects',
+                              background: '제품의 주요 특징과 브랜드 이미지를 효과적으로 전달하기 위해 상세페이지를 제작했습니다.',
+                              designFocus: [
+                                {
+                                  id: 'f-1',
+                                  title: '핵심 정보의 명확한 위계 설계',
+                                  description: '소비자가 가장 궁금해하는 핵심 장점을 우선적으로 배치했습니다.'
+                                }
+                              ],
+                              sections: [
+                                {
+                                  id: 'sec-1',
+                                  title: '01. HERO SECTION',
+                                  caption: '메인 훅 비주얼',
+                                  imageUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1400&q=85'
+                                }
+                              ],
+                              outcome: {
+                                result: '공식 런칭 페이지 적용',
+                                details: '실제 판매 페이지에 적용되어 고객 이해도 향상.'
+                              }
+                            };
+                            setEditingProject(newProj);
+                            setIsCreatingNewProject(true);
+                          }}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded bg-white text-[#141414] text-xs font-semibold hover:bg-[#EAEAEA]"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>새 프로젝트 추가</span>
+                        </button>
+                      </div>
+
+                      {/* Project Table / Cards */}
+                      <div className="space-y-3">
+                        {draft.projects.map((proj, idx) => (
+                          <div
+                            key={proj.id}
+                            className="p-4 rounded-lg bg-[#222220] border border-[#333330] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                          >
+                            <div className="flex items-center gap-4">
+                              <img
+                                src={proj.coverImage}
+                                alt={proj.title}
+                                className="w-16 h-12 rounded object-cover bg-[#333330] border border-[#444440]"
+                              />
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-xs font-bold text-amber-400">
+                                    {proj.number}
+                                  </span>
+                                  <h4 className="text-sm font-bold text-white">{proj.title}</h4>
+                                  {proj.featuredInHero && (
+                                    <span className="text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded font-mono">
+                                      HERO FEATURED
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-[#888880] font-mono">
+                                  {proj.category} · {proj.period} · {proj.sections.length} 섹션
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 self-end sm:self-center">
+                              <button
+                                onClick={() => handleMoveProject(idx, 'up')}
+                                disabled={idx === 0}
+                                title="위로 이동"
+                                className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleMoveProject(idx, 'down')}
+                                disabled={idx === draft.projects.length - 1}
+                                title="아래로 이동"
+                                className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingProject(proj);
+                                  setIsCreatingNewProject(false);
+                                }}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#333330] hover:bg-[#40403C] text-xs text-white"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                <span>상세 편집</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProject(proj.id)}
+                                className="p-1.5 rounded bg-red-900/40 hover:bg-red-900/70 text-red-300"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: HERO */}
+              {activeTab === 'hero' && (
+                <div className="space-y-6 max-w-2xl">
+                  <h3 className="text-base font-bold text-white">메인 히어로 카피 수정</h3>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">메인 카피 (첫 줄)</label>
+                      <input
+                        type="text"
+                        value={draft.hero.mainCopyLine1}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            hero: { ...draft.hero, mainCopyLine1: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">메인 카피 (둘째 줄)</label>
+                      <input
+                        type="text"
+                        value={draft.hero.mainCopyLine2}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            hero: { ...draft.hero, mainCopyLine2: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">서브 카피 (첫 줄)</label>
+                      <input
+                        type="text"
+                        value={draft.hero.subCopyLine1}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            hero: { ...draft.hero, subCopyLine1: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">서브 카피 (둘째 줄)</label>
+                      <textarea
+                        rows={2}
+                        value={draft.hero.subCopyLine2}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            hero: { ...draft.hero, subCopyLine2: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white resize-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">CTA 버튼 텍스트</label>
+                      <input
+                        type="text"
+                        value={draft.hero.ctaText}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            hero: { ...draft.hero, ctaText: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: DESIGN APPROACH */}
+              {activeTab === 'approach' && (
+                <div className="space-y-6 max-w-3xl">
+                  <h3 className="text-base font-bold text-white">디자인 철학 & 4단계 프로세스</h3>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">핵심 철학 인용구 (Core Quote)</label>
+                      <textarea
+                        rows={3}
+                        value={draft.approach.coreQuote}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            approach: { ...draft.approach, coreQuote: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white resize-none"
+                      />
+                    </div>
+
+                    <div className="space-y-4 pt-4 border-t border-[#333330]">
+                      <span className="text-xs font-mono font-bold text-[#A0A09A]">4단계 프로세스 수정</span>
+                      {draft.approach.steps.map((st, idx) => (
+                        <div key={st.step} className="p-4 rounded bg-[#222220] border border-[#333330] space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-xs font-bold text-amber-400">0{idx + 1}</span>
+                            <input
+                              type="text"
+                              value={st.enTitle}
+                              onChange={(e) => {
+                                const newSteps = [...draft.approach.steps];
+                                newSteps[idx].enTitle = e.target.value;
+                                setDraft({ ...draft, approach: { ...draft.approach, steps: newSteps } });
+                              }}
+                              className="px-2 py-1 rounded bg-[#2A2A28] text-xs font-mono text-white"
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={st.koTitle}
+                            onChange={(e) => {
+                              const newSteps = [...draft.approach.steps];
+                              newSteps[idx].koTitle = e.target.value;
+                              setDraft({ ...draft, approach: { ...draft.approach, steps: newSteps } });
+                            }}
+                            className="w-full px-3 py-1.5 rounded bg-[#282826] border border-[#3A3A36] text-xs sm:text-sm text-white"
+                          />
+                          <textarea
+                            rows={2}
+                            value={st.description}
+                            onChange={(e) => {
+                              const newSteps = [...draft.approach.steps];
+                              newSteps[idx].description = e.target.value;
+                              setDraft({ ...draft, approach: { ...draft.approach, steps: newSteps } });
+                            }}
+                            className="w-full px-3 py-1.5 rounded bg-[#282826] border border-[#3A3A36] text-xs text-[#B0B0A8] resize-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: ABOUT */}
+              {activeTab === 'about' && (
+                <div className="space-y-6 max-w-3xl">
+                  <h3 className="text-base font-bold text-white">디자이너 소개 & 이력</h3>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">인사말 (Greeting)</label>
+                      <input
+                        type="text"
+                        value={draft.about.greeting}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            about: { ...draft.about, greeting: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">소개 본문 (Intro Paragraph)</label>
+                      <textarea
+                        rows={4}
+                        value={draft.about.intro}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            about: { ...draft.about, intro: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm focus:border-white resize-none"
+                      />
+                    </div>
+
+                    {/* 3 Strengths */}
+                    <div className="space-y-3 pt-4 border-t border-[#333330]">
+                      <span className="text-xs font-mono font-bold text-[#A0A09A]">핵심 강점 3가지 (Strengths)</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {draft.about.strengths.map((st, sIdx) => (
+                          <div key={st.id} className="p-3 rounded bg-[#222220] border border-[#333330] space-y-2">
+                            <input
+                              type="text"
+                              value={st.title}
+                              onChange={(e) => {
+                                const newSt = [...draft.about.strengths];
+                                newSt[sIdx].title = e.target.value;
+                                setDraft({ ...draft, about: { ...draft.about, strengths: newSt } });
+                              }}
+                              className="w-full px-2 py-1 rounded bg-[#2C2C28] text-xs font-bold text-white"
+                            />
+                            <textarea
+                              rows={3}
+                              value={st.description}
+                              onChange={(e) => {
+                                const newSt = [...draft.about.strengths];
+                                newSt[sIdx].description = e.target.value;
+                                setDraft({ ...draft, about: { ...draft.about, strengths: newSt } });
+                              }}
+                              className="w-full px-2 py-1 rounded bg-[#2C2C28] text-[11px] text-[#A0A09A] resize-none"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: CONTACT & META */}
+              {activeTab === 'contact' && (
+                <div className="space-y-6 max-w-2xl">
+                  <h3 className="text-base font-bold text-white">연락처 & 메타 정보</h3>
+
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-mono text-[#888880]">디자이너 이름</label>
+                        <input
+                          type="text"
+                          value={draft.meta.designerName}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              meta: { ...draft.meta, designerName: e.target.value },
+                            })
+                          }
+                          className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-mono text-[#888880]">직함 / 타이틀</label>
+                        <input
+                          type="text"
+                          value={draft.meta.designerTitle}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              meta: { ...draft.meta, designerTitle: e.target.value },
+                            })
+                          }
+                          className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">이메일 주소</label>
+                      <input
+                        type="email"
+                        value={draft.meta.email}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            meta: { ...draft.meta, email: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">전화번호</label>
+                      <input
+                        type="text"
+                        value={draft.meta.phone}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            meta: { ...draft.meta, phone: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-mono text-[#888880]">구직 / 협업 가능 상태 뱃지 문구</label>
+                      <input
+                        type="text"
+                        value={draft.contact.availableBadgeText}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            contact: { ...draft.contact, availableBadgeText: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: BACKUP & RESTORE */}
+              {activeTab === 'backup' && (
+                <div className="space-y-6 max-w-2xl">
+                  <h3 className="text-base font-bold text-white">데이터 백업 & 복원</h3>
+                  <p className="text-xs text-[#888880]">
+                    수정한 포트폴리오 데이터를 JSON 파일로 내보내거나, 초기 샘플 데이터로 복원할 수 있습니다.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <button
+                      onClick={handleExportJson}
+                      className="p-5 rounded-lg bg-[#222220] border border-[#3A3A36] hover:border-white text-left space-y-2 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 text-white font-bold text-xs">
+                        <Download className="w-4 h-4" />
+                        <span>JSON 백업 파일 내보내기</span>
+                      </div>
+                      <p className="text-[11px] text-[#888880]">
+                        현재 작성된 모든 프로젝트 및 텍스트를 파일로 다운로드합니다.
+                      </p>
+                    </button>
+
+                    <label className="p-5 rounded-lg bg-[#222220] border border-[#3A3A36] hover:border-white text-left space-y-2 cursor-pointer transition-colors block">
+                      <div className="flex items-center gap-2 text-white font-bold text-xs">
+                        <Upload className="w-4 h-4" />
+                        <span>JSON 백업 파일 불러오기</span>
+                      </div>
+                      <p className="text-[11px] text-[#888880]">
+                        이전에 저장해 둔 JSON 백업 파일을 업로드하여 복원합니다.
+                      </p>
+                      <input type="file" accept=".json" onChange={handleImportJson} className="hidden" />
+                    </label>
+                  </div>
+
+                  <div className="pt-6 border-t border-[#333330]">
+                    <button
+                      onClick={handleReset}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded bg-red-900/50 hover:bg-red-900/80 text-red-200 text-xs font-semibold border border-red-800"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>초기 샘플 데이터로 리셋하기</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Footer Action Bar */}
+            <div className="bg-[#202020] px-6 py-3 border-t border-[#303030] flex items-center justify-between text-xs">
+              <button
+                onClick={handleLogout}
+                className="text-[#888880] hover:text-white font-mono"
+              >
+                관리자 로그아웃
+              </button>
+
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 px-4 py-2 rounded bg-white text-[#141414] font-bold hover:bg-[#EAEAEA]"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>저장하고 사이트에 반영</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+};
+
+// Sub-component: In-depth Project Editor
+interface ProjectEditorProps {
+  project: Project;
+  onSave: (project: Project) => void;
+  onCancel: () => void;
+}
+
+const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel }) => {
+  const [form, setForm] = useState<Project>(project);
+
+  const handleAddDesignFocus = () => {
+    setForm({
+      ...form,
+      designFocus: [
+        ...form.designFocus,
+        {
+          id: `focus-${Date.now()}`,
+          title: '새로운 디자인 포커스',
+          description: '이 섹션에서 고객과 정보 전달을 위해 고민한 내용을 작성합니다.',
+        },
+      ],
+    });
+  };
+
+  const handleRemoveDesignFocus = (index: number) => {
+    const updated = form.designFocus.filter((_, idx) => idx !== index);
+    setForm({ ...form, designFocus: updated });
+  };
+
+  const handleAddSection = () => {
+    setForm({
+      ...form,
+      sections: [
+        ...form.sections,
+        {
+          id: `sec-${Date.now()}`,
+          title: `0${form.sections.length + 1}. NEW SECTION`,
+          caption: '섹션 설명 또는 타이포그래피/레이아웃 의도',
+          imageUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=85',
+        },
+      ],
+    });
+  };
+
+  const handleRemoveSection = (index: number) => {
+    const updated = form.sections.filter((_, idx) => idx !== index);
+    setForm({ ...form, sections: updated });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between pb-4 border-b border-[#333330]">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-bold text-amber-400">PROJECT {form.number}</span>
+          <h3 className="text-base font-bold text-white">프로젝트 상세 편집</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded bg-[#333330] text-xs text-white hover:bg-[#40403C]"
+          >
+            취소
+          </button>
+          <button
+            onClick={() => onSave(form)}
+            className="px-4 py-1.5 rounded bg-white text-xs font-bold text-[#141414] hover:bg-[#EAEAEA]"
+          >
+            완료
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-mono text-[#888880]">프로젝트 제목</label>
+          <input
+            type="text"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-mono text-[#888880]">카테고리</label>
+          <div className="flex gap-1.5 mb-1.5 flex-wrap">
+            {[
+              { label: '상세페이지', val: 'DETAIL PAGE', type: 'detail-page' as const },
+              { label: 'SNS 콘텐츠', val: 'SNS CONTENT', type: 'sns-content' as const },
+              { label: '쇼핑몰 메인배너', val: 'MAIN BANNER', type: 'main-banner' as const },
+              { label: '영상·모션', val: 'VIDEO & MOTION', type: 'video-motion' as const },
+            ].map((c) => (
+              <button
+                key={c.val}
+                type="button"
+                onClick={() => setForm({ ...form, category: c.val, projectType: c.type })}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
+                  form.category === c.val
+                    ? 'bg-[#EC4899] text-white border-[#EC4899] font-bold'
+                    : 'bg-[#2A2A28] text-slate-400 border-[#3A3A36] hover:text-white'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+            placeholder="e.g. DETAIL PAGE, SNS CONTENT, MAIN BANNER, VIDEO & MOTION"
+          />
+        </div>
+      </div>
+
+      {/* Video & Motion Multi-Size Settings */}
+      <div className="p-4 rounded-xl bg-[#242422] border border-[#3A3A36] space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-mono text-pink-400 font-bold flex items-center gap-1.5">
+            <span>🎥 영상 콘텐츠 파일 및 멀티사이즈 설정</span>
+          </label>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                const baseVid = form.videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-lipstick-in-front-of-a-mirror-40762-large.mp4";
+                setForm({
+                  ...form,
+                  videoUrl: baseVid,
+                  videoVariations: [
+                    {
+                      id: "var-shortform",
+                      type: "9:16",
+                      label: "모바일 숏폼 버전 (9:16)",
+                      dimension: "1080 x 1920 px (9:16)",
+                      videoUrl: baseVid,
+                      description: "인스타그램 릴스, 유튜브 쇼츠, 틱톡 모바일 세로 풀스크린 최적화 영상"
+                    },
+                    {
+                      id: "var-pc",
+                      type: "16:9",
+                      label: "PC·웹 와이드 버전 (16:9)",
+                      dimension: "1920 x 1080 px (16:9)",
+                      videoUrl: baseVid,
+                      description: "웹사이트 메인 및 유튜브용 16:9 와이드 가로형 시네마틱 영상"
+                    },
+                    {
+                      id: "var-square",
+                      type: "1:1",
+                      label: "정사각형 타입 (1:1)",
+                      dimension: "1080 x 1080 px (1:1)",
+                      videoUrl: baseVid,
+                      description: "인스타그램 피드 및 모바일 광고 피드용 1:1 정방형 영상"
+                    }
+                  ]
+                });
+              }}
+              className="px-2.5 py-1 rounded text-[10px] font-mono bg-[#333330] text-slate-300 hover:text-white border border-[#444440]"
+            >
+              + 3가지 멀티사이즈 자동생성
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setForm({
+                  ...form,
+                  videoVariations: undefined
+                });
+              }}
+              className="px-2.5 py-1 rounded text-[10px] font-mono bg-[#333330] text-slate-400 hover:text-rose-400 border border-[#444440]"
+            >
+              숏폼 단독으로 리셋
+            </button>
+          </div>
+        </div>
+
+        {/* Primary Video Direct Upload */}
+        <MediaFileUpload
+          label="기본 / 모바일 숏폼(9:16) 영상 파일"
+          value={form.videoUrl || ''}
+          onChange={(val) => setForm({ ...form, videoUrl: val })}
+          accept="video"
+          placeholder="내 컴퓨터에서 영상 파일(MP4, WebM 등)을 선택하세요"
+          helperText="영상/모션 카테고리 프로젝트의 메인 재생 영상입니다. (내 PC 파일 바로 업로드 가능)"
+          previewHeight="h-44"
+        />
+
+        {form.videoVariations && form.videoVariations.length > 0 && (
+          <div className="space-y-3 pt-3 border-t border-[#333330]">
+            <span className="text-[11px] font-mono text-pink-300 block font-bold">
+              등록된 사이즈별 바리에이션 ({form.videoVariations.length}개):
+            </span>
+            {form.videoVariations.map((v, vIdx) => (
+              <div key={v.id || vIdx} className="p-3 rounded-lg bg-[#1C1C1A] border border-[#333330] space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-white font-mono">{v.label} ({v.type})</span>
+                  <span className="text-[10px] text-pink-400 font-mono">{v.dimension}</span>
+                </div>
+                <MediaFileUpload
+                  value={v.videoUrl || ''}
+                  onChange={(val) => {
+                    const newVars = [...(form.videoVariations || [])];
+                    newVars[vIdx] = { ...newVars[vIdx], videoUrl: val };
+                    setForm({ ...form, videoVariations: newVars });
+                  }}
+                  accept="video"
+                  placeholder={`${v.label} 영상 파일 선택`}
+                  previewHeight="h-28"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-mono text-[#888880]">한 줄 요약 (Summary)</label>
+        <textarea
+          rows={2}
+          value={form.summary}
+          onChange={(e) => setForm({ ...form, summary: e.target.value })}
+          className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs resize-none"
+        />
+      </div>
+
+      {/* Representative Cover Image Direct Upload */}
+      <MediaFileUpload
+        label="대표 커버 이미지 (Cover Image)"
+        value={form.coverImage}
+        onChange={(val) => setForm({ ...form, coverImage: val })}
+        accept="image"
+        placeholder="내 컴퓨터에서 대표 커버 이미지(JPG, PNG, WebP)를 선택하세요"
+        helperText="작품 갤러리 썸네일 및 상세 상단 헤더에 노출되는 대표 이미지입니다."
+        previewHeight="h-44"
+      />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="space-y-1">
+          <label className="text-[11px] font-mono text-[#888880]">역할 (Role)</label>
+          <input
+            type="text"
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+            className="w-full px-2.5 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-mono text-[#888880]">기간 (Period)</label>
+          <input
+            type="text"
+            value={form.period}
+            onChange={(e) => setForm({ ...form, period: e.target.value })}
+            className="w-full px-2.5 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-mono text-[#888880]">사용 툴 (Tools)</label>
+          <input
+            type="text"
+            value={form.tools}
+            onChange={(e) => setForm({ ...form, tools: e.target.value })}
+            className="w-full px-2.5 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-mono text-[#888880]">클라이언트 (Client)</label>
+          <input
+            type="text"
+            value={form.client || ''}
+            onChange={(e) => setForm({ ...form, client: e.target.value })}
+            className="w-full px-2.5 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+          />
+        </div>
+      </div>
+
+      {/* 01. BACKGROUND */}
+      <div className="space-y-1.5 pt-3 border-t border-[#333330]">
+        <label className="text-xs font-mono text-[#888880]">01. BACKGROUND (프로젝트 배경 및 기획 의도)</label>
+        <textarea
+          rows={3}
+          value={form.background}
+          onChange={(e) => setForm({ ...form, background: e.target.value })}
+          className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs resize-none"
+        />
+      </div>
+
+      {/* 02. DESIGN FOCUS */}
+      <div className="space-y-3 pt-3 border-t border-[#333330]">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-mono text-[#888880]">02. DESIGN FOCUS (고민한 디자인 포인트 2~3개)</label>
+          <button
+            onClick={handleAddDesignFocus}
+            className="text-[11px] font-mono text-amber-400 hover:underline flex items-center gap-1"
+          >
+            <Plus className="w-3 h-3" /> 포커스 추가
+          </button>
+        </div>
+        <div className="space-y-2">
+          {form.designFocus.map((df, idx) => (
+            <div key={df.id || idx} className="p-3 rounded bg-[#222220] border border-[#333330] space-y-2">
+              <div className="flex items-center justify-between">
+                <input
+                  type="text"
+                  placeholder="포커스 제목 (예: 핵심 특장점의 단계적 인지 구조)"
+                  value={df.title}
+                  onChange={(e) => {
+                    const updated = [...form.designFocus];
+                    updated[idx].title = e.target.value;
+                    setForm({ ...form, designFocus: updated });
+                  }}
+                  className="w-5/6 px-2.5 py-1 rounded bg-[#2C2C28] text-xs font-bold text-white"
+                />
+                <button
+                  onClick={() => handleRemoveDesignFocus(idx)}
+                  className="p-1 text-red-400 hover:text-red-300"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <textarea
+                rows={2}
+                placeholder="상세 설명"
+                value={df.description}
+                onChange={(e) => {
+                  const updated = [...form.designFocus];
+                  updated[idx].description = e.target.value;
+                  setForm({ ...form, designFocus: updated });
+                }}
+                className="w-full px-2.5 py-1 rounded bg-[#2C2C28] text-xs text-[#B0B0A8] resize-none"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 03. DESIGN SECTIONS (상세페이지 분할 컷팅 및 다중 이미지/GIF 지원) */}
+      <div className="space-y-4 pt-4 border-t border-[#333330]">
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-xs font-mono text-amber-400 font-bold block">
+              03. DESIGN SECTIONS (상세 이미지 / 분할 컷팅 섹션)
+            </label>
+            <span className="text-[11px] text-[#888880] font-mono">
+              한 섹션에 상세페이지 여러 분할 컷(01.jpg, 02.gif...)을 연속으로 등록할 수 있습니다.
+            </span>
+          </div>
+          <button
+            onClick={handleAddSection}
+            className="px-3 py-1.5 rounded-lg bg-[#30302C] hover:bg-[#3C3C38] text-[11px] font-mono text-amber-400 border border-[#444440] flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" /> 새 섹션 추가
+          </button>
+        </div>
+
+        <div className="space-y-5">
+          {form.sections.map((sec, sIdx) => {
+            const hasMultipleImages = Boolean(sec.images && sec.images.length > 1);
+            const currentImagesList = sec.images && sec.images.length > 0 ? sec.images : sec.imageUrl ? [sec.imageUrl] : [];
+
+            return (
+              <div key={sec.id || sIdx} className="p-4 rounded-xl bg-[#222220] border border-[#3A3A36] space-y-3.5 shadow-md">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="w-6 h-6 rounded-md bg-[#2F2F2B] text-amber-400 font-mono text-xs font-bold flex items-center justify-center border border-[#42423E]">
+                      {sIdx + 1}
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="섹션 제목 (예: 01. INTRO & HOOK / 상세페이지 전체 컷)"
+                      value={sec.title}
+                      onChange={(e) => {
+                        const updated = [...form.sections];
+                        updated[sIdx].title = e.target.value;
+                        setForm({ ...form, sections: updated });
+                      }}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-[#2C2C28] text-xs font-bold text-white border border-[#3E3E3A]"
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => handleRemoveSection(sIdx)}
+                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/40 rounded-lg transition-colors border border-transparent hover:border-red-900/50 shrink-0"
+                    title="이 섹션 삭제"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Sliced Multi-Cut Images / GIF Uploader Component */}
+                <MultiImageSliceUpload
+                  label={`섹션 ${sIdx + 1} 상세 이미지 / 분할 컷팅 (다중 파일 및 GIF 지원)`}
+                  images={currentImagesList}
+                  layoutMode={sec.layoutMode || 'seamless'}
+                  onLayoutModeChange={(mode) => {
+                    const updated = [...form.sections];
+                    updated[sIdx].layoutMode = mode;
+                    setForm({ ...form, sections: updated });
+                  }}
+                  onChange={(newImages) => {
+                    const updated = [...form.sections];
+                    updated[sIdx].images = newImages;
+                    updated[sIdx].imageUrl = newImages[0] || '';
+                    setForm({ ...form, sections: updated });
+                  }}
+                />
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-mono text-slate-400">섹션 부가 설명 / 캡션 (선택)</label>
+                  <input
+                    type="text"
+                    placeholder="섹션 기획 의도 또는 상세 설명 (선택사항)"
+                    value={sec.caption || ''}
+                    onChange={(e) => {
+                      const updated = [...form.sections];
+                      updated[sIdx].caption = e.target.value;
+                      setForm({ ...form, sections: updated });
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-[#2C2C28] text-xs text-[#E0E0D8] border border-[#3A3A36]"
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 04. OUTCOME */}
+      <div className="space-y-2 pt-3 border-t border-[#333330]">
+        <label className="text-xs font-mono text-[#888880]">04. OUTCOME (결과 및 적용 현황)</label>
+        <input
+          type="text"
+          placeholder="성과 요약 (예: 공식 온라인 스토어 메인 상세페이지 적용)"
+          value={form.outcome.result}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              outcome: { ...form.outcome, result: e.target.value },
+            })
+          }
+          className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
+        />
+        <textarea
+          rows={2}
+          placeholder="세부 내용 또는 고객 피드백"
+          value={form.outcome.details || ''}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              outcome: { ...form.outcome, details: e.target.value },
+            })
+          }
+          className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs resize-none"
+        />
+      </div>
+
+      <div className="pt-4 flex justify-end gap-3">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded bg-[#333330] text-xs text-white"
+        >
+          취소
+        </button>
+        <button
+          onClick={() => onSave(form)}
+          className="px-5 py-2 rounded bg-white text-xs font-bold text-[#141414]"
+        >
+          프로젝트 저장
+        </button>
+      </div>
+    </div>
+  );
+};
