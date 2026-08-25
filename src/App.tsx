@@ -55,14 +55,15 @@ export default function App() {
     document.title = `${content.meta.designerName} | ${content.meta.designerTitle}`;
   }, [content]);
 
-  const handleSaveContent = (newContent: SiteContent) => {
+  const handleSaveContent = async (newContent: SiteContent): Promise<{ success: boolean; error?: string }> => {
     setContent(newContent);
-    saveSiteContent(newContent);
+    const result = await saveSiteContent(newContent);
     // If the currently viewed project is updated, sync it
     if (selectedProject) {
       const updated = newContent.projects.find((p) => p.id === selectedProject.id);
       if (updated) setSelectedProject(updated);
     }
+    return result;
   };
 
   const handleResetContent = () => {

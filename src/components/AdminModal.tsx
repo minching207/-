@@ -35,7 +35,7 @@ interface AdminModalProps {
   isOpen: boolean;
   onClose: () => void;
   content: SiteContent;
-  onSaveContent: (newContent: SiteContent) => void;
+  onSaveContent: (newContent: SiteContent) => Promise<{ success: boolean; error?: string }> | void;
   onResetContent: () => void;
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
@@ -56,7 +56,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   
   // Local editable draft state
   const [draft, setDraft] = useState<SiteContent>(content);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Selected project for editing in projects tab
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -108,10 +110,22 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     setAdminSession(false);
   };
 
-  const handleSave = () => {
-    onSaveContent(draft);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const res = await onSaveContent(draft);
+      if (res && !res.success) {
+        setSaveError(res.error || '클라우드 저장에 실패했습니다.');
+      } else {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || '저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -192,7 +206,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     }
   };
 
-  const handleDuplicateProject = (proj: Project) => {
+  const handleDuplicateProject = async (proj: Project) => {
     const newId = `proj-${Date.now()}`;
     const duplicated: Project = {
       ...JSON.parse(JSON.stringify(proj)),
@@ -203,12 +217,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     const updatedProjects = [...draft.projects, duplicated];
     const newDraft = { ...draft, projects: updatedProjects };
     setDraft(newDraft);
-    onSaveContent(newDraft);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+    setIsSaving(true);
+    try {
+      await onSaveContent(newDraft);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (e: any) {
+      setSaveError(e?.message || '저장 중 오류 발생');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveEditingProject = (proj: Project) => {
+  const handleSaveEditingProject = async (proj: Project) => {
     let updatedProjects: Project[];
     if (isCreatingNewProject) {
       proj.number = String(draft.projects.length + 1).padStart(2, '0');
@@ -218,11 +239,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     }
     const newDraft = { ...draft, projects: updatedProjects };
     setDraft(newDraft);
-    onSaveContent(newDraft); // Immediately persist to app state and localStorage
     setEditingProject(null);
     setIsCreatingNewProject(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+    setIsSaving(true);
+    try {
+      await onSaveContent(newDraft);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (e: any) {
+      setSaveError(e?.message || '저장 중 오류 발생');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -334,14 +362,31 @@ export const AdminModal: React.FC<AdminModalProps> = ({
             <div className="flex items-center gap-3">
               <button
                 onClick={handleSave}
+                disabled={isSaving}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wider transition-all cursor-pointer ${
-                  saveSuccess ? 'bg-emerald-600 text-white' : 'bg-white text-[#141414] hover:bg-[#EAEAE5]'
+                  isSaving 
+                    ? 'bg-amber-600 text-white cursor-wait' 
+                    : saveSuccess 
+                    ? 'bg-emerald-600 text-white' 
+                    : saveError 
+                    ? 'bg-red-600 text-white' 
+                    : 'bg-white text-[#141414] hover:bg-[#EAEAE5]'
                 }`}
               >
-                {saveSuccess ? (
+                {isSaving ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>클라우드 저장 중...</span>
+                  </>
+                ) : saveSuccess ? (
                   <>
                     <CheckCircle className="w-3.5 h-3.5" />
-                    <span>저장 완료!</span>
+                    <span>클라우드 반영 완료!</span>
+                  </>
+                ) : saveError ? (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>저장 실패</span>
                   </>
                 ) : (
                   <>
@@ -360,6 +405,24 @@ export const AdminModal: React.FC<AdminModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Real-time sync feedback banner if saving / error / success */}
+          {saveSuccess && (
+            <div className="bg-emerald-950/80 border-b border-emerald-800/80 px-6 py-2 flex items-center justify-between text-xs text-emerald-300 font-medium">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Firebase 클라우드에 영구 저장되었습니다. 모든 방문자 및 시크릿 창에 즉시 반영됩니다!</span>
+              </div>
+            </div>
+          )}
+          {saveError && (
+            <div className="bg-red-950/80 border-b border-red-800/80 px-6 py-2 flex items-center justify-between text-xs text-red-300 font-medium">
+              <div className="flex items-center gap-2">
+                <X className="w-4 h-4 text-red-400 shrink-0" />
+                <span>저장 오류: {saveError}</span>
+              </div>
+            </div>
+          )}
 
           {/* Nav Tabs */}
           <div className="bg-[#1E1E1C] px-6 border-b border-[#2C2C28] flex items-center gap-2 overflow-x-auto shrink-0">
@@ -927,10 +990,38 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-4 py-2 rounded bg-white text-[#141414] font-bold hover:bg-[#EAEAEA] cursor-pointer transition-all shadow"
+                disabled={isSaving}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded font-bold cursor-pointer transition-all shadow ${
+                  isSaving
+                    ? 'bg-amber-600 text-white cursor-wait'
+                    : saveSuccess
+                    ? 'bg-emerald-600 text-white'
+                    : saveError
+                    ? 'bg-red-600 text-white'
+                    : 'bg-white text-[#141414] hover:bg-[#EAEAEA]'
+                }`}
               >
-                <Save className="w-3.5 h-3.5" />
-                <span>저장하고 사이트에 반영</span>
+                {isSaving ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>클라우드 동기화 중...</span>
+                  </>
+                ) : saveSuccess ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>클라우드 및 사이트에 영구 반영 완료!</span>
+                  </>
+                ) : saveError ? (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>저장 실패 (다시 시도)</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>저장하고 사이트에 반영</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

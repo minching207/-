@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "PortfolioContent": {
+      "title": "PortfolioContent",
+      "description": "Entire portfolio data including projects, about, hero, and contact info",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "object",
+          "description": "Full site content JSON payload"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last update"
+        }
+      },
+      "required": ["content", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/portfolio_content/{docId}": {
+      "schema": "PortfolioContent",
+      "description": "Global portfolio configuration document shared across all visitors"
+    }
+  }
+}

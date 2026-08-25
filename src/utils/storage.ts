@@ -70,60 +70,37 @@ async function saveIndexedDBContent(content: SiteContent): Promise<boolean> {
   }
 }
 
-function sanitizeProjectImagesAndTools(projects: any[]) {
-  if (!Array.isArray(projects) || projects.length === 0) return initialSiteContent.projects;
-
-  return projects.map((p) => {
-    let cover = p.coverImage;
-    if (cover && cover.includes('photo-1608248597359-0a56e0766324')) {
-      cover = 'https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?auto=format&fit=crop&w=1200&q=85';
-    }
-    const sections = (p.sections || []).map((sec: any) => {
-      let img = sec.imageUrl;
-      if (img && img.includes('photo-1550572017-edd951aa8f72')) {
-        img = 'https://images.unsplash.com/photo-1577401239170-897942555fb3?auto=format&fit=crop&w=1200&q=85';
-      }
-      return { ...sec, imageUrl: img };
-    });
-    // Clean tools string
-    let tools = p.tools || '';
-    tools = tools.replace(/Figma\s*\/\s*/gi, '').replace(/\/\s*Figma/gi, '').replace(/Figma/gi, 'Photoshop / Illustrator');
-    if (!tools.trim()) tools = 'Photoshop / Illustrator';
-
-    return { ...p, coverImage: cover, sections, tools };
-  });
-}
-
-function sanitizeAboutSkills(about: any) {
-  if (!about || !about.skills) return initialSiteContent.about;
-  const updatedSkills = initialSiteContent.about.skills;
-  return {
-    ...about,
-    skills: updatedSkills
-  };
-}
-
 export function mergeWithInitial(parsed: any): SiteContent {
-  const cleanedProjects = sanitizeProjectImagesAndTools(
-    parsed.projects && parsed.projects.length > 0 ? parsed.projects : initialSiteContent.projects
-  );
-  const cleanedAbout = sanitizeAboutSkills(parsed.about || initialSiteContent.about);
+  if (!parsed || typeof parsed !== 'object') return initialSiteContent;
+
+  const mergedProjects = Array.isArray(parsed.projects) && parsed.projects.length > 0 
+    ? parsed.projects 
+    : initialSiteContent.projects;
 
   return {
     ...initialSiteContent,
     ...parsed,
     meta: {
       ...initialSiteContent.meta,
-      ...(parsed.meta && parsed.meta.designerName && parsed.meta.designerName !== '김서연' ? parsed.meta : initialSiteContent.meta)
+      ...(parsed.meta || {}),
     },
-    hero: { ...initialSiteContent.hero, ...(parsed.hero || {}) },
-    approach: { ...initialSiteContent.approach, ...(parsed.approach || {}) },
+    hero: {
+      ...initialSiteContent.hero,
+      ...(parsed.hero || {}),
+    },
+    approach: {
+      ...initialSiteContent.approach,
+      ...(parsed.approach || {}),
+    },
     about: {
-      ...cleanedAbout,
-      greeting: cleanedAbout.greeting && !cleanedAbout.greeting.includes('김서연') ? cleanedAbout.greeting : initialSiteContent.about.greeting
+      ...initialSiteContent.about,
+      ...(parsed.about || {}),
     },
-    contact: { ...initialSiteContent.contact, ...(parsed.contact || {}) },
-    projects: cleanedProjects,
+    contact: {
+      ...initialSiteContent.contact,
+      ...(parsed.contact || {}),
+    },
+    projects: mergedProjects,
   };
 }
 
@@ -192,25 +169,22 @@ export async function loadSiteContentAsync(): Promise<SiteContent | null> {
  * 2. IndexedDB (Unlimited capacity storage)
  * 3. LocalStorage (Instant cache)
  */
-export function saveSiteContent(content: SiteContent): boolean {
-  // 1. Save to Cloud Firestore
-  saveRemoteContent(content).catch((err) => {
-    console.warn('Firebase remote save failed', err);
-  });
+export async function saveSiteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
+  // 1. Save to localStorage
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
+  } catch (err) {
+    console.warn('localStorage quota exceeded.', err);
+  }
 
   // 2. Save to IndexedDB (handles any file size / base64)
   saveIndexedDBContent(content).catch((err) => {
     console.error('IndexedDB save failed', err);
   });
 
-  // 3. Save to localStorage
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
-    return true;
-  } catch (err) {
-    console.warn('localStorage quota exceeded. Content safely saved to IndexedDB and Cloud Firestore.', err);
-    return true;
-  }
+  // 3. Save to Cloud Firestore (Real-time global persistence)
+  const remoteResult = await saveRemoteContent(content);
+  return remoteResult;
 }
 
 export function resetToDefaultContent(): SiteContent {
