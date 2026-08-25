@@ -337,7 +337,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 </label>
                 <input
                   type="password"
-                  placeholder="비밀번호 4자리 (기본: 1111)"
+                  placeholder="비밀번호를 입력하세요"
                   value={passwordInput}
                   onChange={(e) => {
                     setPasswordInput(e.target.value);
