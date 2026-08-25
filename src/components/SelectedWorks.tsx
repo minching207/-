@@ -35,7 +35,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
     { id: 'ALL', label: '전체', subLabel: 'ALL', icon: Layers },
     { id: 'DETAIL PAGE', label: '상세페이지', subLabel: 'DETAIL PAGE', icon: Smartphone },
     { id: 'SNS CONTENT', label: 'SNS 콘텐츠', subLabel: 'SNS CONTENT', icon: Instagram },
-    { id: 'MAIN BANNER', label: '쇼핑몰 메인배너', subLabel: 'MAIN BANNER', icon: Layout },
+    { id: 'MAIN BANNER', label: '배너', subLabel: 'BANNER', icon: Layout },
     { id: 'VIDEO & MOTION', label: '영상·모션', subLabel: 'VIDEO & MOTION', icon: PlayCircle },
   ];
 
@@ -104,7 +104,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
     }
     if (cat.includes('BANNER') || type === 'main-banner') {
       return {
-        label: '쇼핑몰 메인배너 · HERO BANNER',
+        label: '배너 · BANNER',
         icon: Layout,
         colorClass: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
       };

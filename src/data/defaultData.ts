@@ -12,9 +12,9 @@ export const initialSiteContent: SiteContent = {
   hero: {
     mainCopyLine1: "상품의 가치를 극대화하는",
     mainCopyLine2: "감각적인 커머스 & 비주얼 디자인.",
-    subCopyLine1: "상세페이지부터 SNS 카드뉴스, 쇼핑몰 메인 배너, 영상·모션 콘텐츠까지",
+    subCopyLine1: "상세페이지부터 SNS 카드뉴스, 배너, 영상·모션 콘텐츠까지",
     subCopyLine2: "고객의 시선을 사로잡고 구매로 이어지는 최적의 비주얼 솔루션을 설계합니다.",
-    tags: ["상세페이지 (DETAIL PAGE)", "SNS 콘텐츠 (SNS CONTENT)", "쇼핑몰 메인배너 (MAIN BANNER)", "영상·모션 (VIDEO & MOTION)"],
+    tags: ["상세페이지 (DETAIL PAGE)", "SNS 콘텐츠 (SNS CONTENT)", "배너 (BANNER)", "영상·모션 (VIDEO & MOTION)"],
     ctaText: "VIEW ALL WORKS",
     featuredVisualTitle: "RELIEF CICA CALMING SERUM",
     featuredVisualSubtitle: "Editorial Commerce & Visual Portfolio · 2026",

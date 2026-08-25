@@ -560,7 +560,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                 <div className="flex items-center justify-between pb-4 border-b border-slate-200">
                   <div className="flex items-center gap-2 text-xs font-mono tracking-widest text-[#EC4899]">
                     <span className="font-bold px-2 py-0.5 rounded bg-[#FDF2F8] border border-[#FBCFE8]">02</span>
-                    <span className="font-bold">E-COMMERCE MAIN HERO BANNER VARIATIONS</span>
+                    <span className="font-bold">E-COMMERCE BANNER VARIATIONS</span>
                   </div>
                   <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md font-bold">
                     {project.bannerVariations.length} RESOLUTION PACKS

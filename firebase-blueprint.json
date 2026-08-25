@@ -16,12 +16,34 @@
         }
       },
       "required": ["content", "updatedAt"]
+    },
+    "PortfolioProject": {
+      "title": "PortfolioProject",
+      "description": "Individual project document with detailed sections and media",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title"]
     }
   },
   "firestore": {
     "/portfolio_content/{docId}": {
       "schema": "PortfolioContent",
       "description": "Global portfolio configuration document shared across all visitors"
+    },
+    "/portfolio_projects/{projectId}": {
+      "schema": "PortfolioProject",
+      "description": "Individual project records for modular high-capacity storage"
     }
   }
 }

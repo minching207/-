@@ -15,6 +15,7 @@ import {
   FileImage,
   Film
 } from 'lucide-react';
+import { optimizeImageFile } from '../utils/imageOptimizer';
 
 interface MediaFileUploadProps {
   label?: string;
@@ -74,13 +75,12 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
       : 'image/jpeg,image/png,image/webp,image/gif,image/svg+xml,video/mp4,video/webm,video/ogg,video/quicktime';
 
   // Process file upload
-  const handleFileProcess = (file: File) => {
+  const handleFileProcess = async (file: File) => {
     setErrorMsg(null);
     setIsProcessing(true);
 
-    const isImageFile = file.type.startsWith('image/');
-    const isVideoFile = file.type.startsWith('video/');
-    const isGifFile = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+    const isImageFile = file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i);
+    const isVideoFile = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|ogg)$/i);
 
     if (accept === 'image' && !isImageFile) {
       setErrorMsg('이미지 파일(JPG, PNG, WebP, GIF 등)만 업로드할 수 있습니다.');
@@ -94,91 +94,31 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
       return;
     }
 
-    // Handle GIF file directly to preserve animations without canvas re-compression
-    if (isGifFile) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const rawDataUrl = e.target?.result as string;
-        onChange(rawDataUrl);
-        setIsProcessing(false);
-      };
-      reader.onerror = () => {
-        setErrorMsg('GIF 파일 읽기 실패');
-        setIsProcessing(false);
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    // Handle standard static image file
-    if (isImageFile) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const rawDataUrl = e.target?.result as string;
-        
-        // Auto-scale huge images over 2200px to maintain memory efficiency
-        const img = new Image();
-        img.onload = () => {
-          const maxDimension = 2200;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxDimension || height > maxDimension || file.size > 3 * 1024 * 1024) {
-            if (width > height) {
-              if (width > maxDimension) {
-                height = Math.round((height * maxDimension) / width);
-                width = maxDimension;
-              }
-            } else {
-              if (height > maxDimension) {
-                width = Math.round((width * maxDimension) / height);
-                height = maxDimension;
-              }
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-              onChange(compressedDataUrl);
-              setIsProcessing(false);
-              return;
-            }
-          }
-          onChange(rawDataUrl);
+    try {
+      if (isImageFile) {
+        const optimizedDataUrl = await optimizeImageFile(file, 1600, 0.84);
+        onChange(optimizedDataUrl);
+      } else if (isVideoFile) {
+        if (file.size > 25 * 1024 * 1024) {
+          setErrorMsg('영상 파일 크기가 25MB를 초과합니다. 25MB 이하를 권장합니다.');
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string;
+          onChange(dataUrl);
           setIsProcessing(false);
         };
-        img.onerror = () => {
-          onChange(rawDataUrl);
+        reader.onerror = () => {
+          setErrorMsg('영상 파일 읽기 실패');
           setIsProcessing(false);
         };
-        img.src = rawDataUrl;
-      };
-      reader.onerror = () => {
-        setErrorMsg('파일 읽기 실패');
-        setIsProcessing(false);
-      };
-      reader.readAsDataURL(file);
-    } else if (isVideoFile) {
-      // For video
-      if (file.size > 25 * 1024 * 1024) {
-        setErrorMsg('영상 파일 크기가 25MB를 초과합니다. 25MB 이하를 권장합니다.');
+        reader.readAsDataURL(file);
+        return;
       }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        onChange(dataUrl);
-        setIsProcessing(false);
-      };
-      reader.onerror = () => {
-        setErrorMsg('영상 파일 읽기 실패');
-        setIsProcessing(false);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setErrorMsg('지원하지 않는 파일 형식입니다.');
+    } catch (err: any) {
+      console.error('File process error:', err);
+      setErrorMsg('파일 처리 중 오류가 발생했습니다.');
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -444,67 +384,17 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
     const files = Array.from(fileList);
 
     for (const file of files) {
-      const isImageFile = file.type.startsWith('image/');
-      const isGifFile = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+      const isImageFile = file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i);
 
       if (!isImageFile) {
         continue;
       }
 
       try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          if (isGifFile) {
-            // GIF: retain 100% full animated frames
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          } else {
-            // Static image: read and compress if huge
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const raw = e.target?.result as string;
-              const img = new Image();
-              img.onload = () => {
-                const maxDimension = 2200;
-                let width = img.width;
-                let height = img.height;
-
-                if (width > maxDimension || height > maxDimension || file.size > 3 * 1024 * 1024) {
-                  if (width > height) {
-                    if (width > maxDimension) {
-                      height = Math.round((height * maxDimension) / width);
-                      width = maxDimension;
-                    }
-                  } else {
-                    if (height > maxDimension) {
-                      width = Math.round((width * maxDimension) / height);
-                      height = maxDimension;
-                    }
-                  }
-                  const canvas = document.createElement('canvas');
-                  canvas.width = width;
-                  canvas.height = height;
-                  const ctx = canvas.getContext('2d');
-                  if (ctx) {
-                    ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.9));
-                    return;
-                  }
-                }
-                resolve(raw);
-              };
-              img.onerror = () => resolve(raw);
-              img.src = raw;
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          }
-        });
-
-        newImages.push(dataUrl);
+        const optimizedDataUrl = await optimizeImageFile(file, 1600, 0.84);
+        newImages.push(optimizedDataUrl);
       } catch (err) {
-        console.error('Error reading file:', file.name, err);
+        console.error('Error reading/optimizing file:', file.name, err);
       }
     }
 
@@ -520,18 +410,12 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
     if (replacingIndex === null) return;
     setIsProcessing(true);
     try {
-      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const optimizedDataUrl = await optimizeImageFile(file, 1600, 0.84);
       const updated = [...images];
-      updated[replacingIndex] = dataUrl;
+      updated[replacingIndex] = optimizedDataUrl;
       onChange(updated);
     } catch (err) {
-      console.error(err);
+      console.error('Image replace error:', err);
     } finally {
       setIsProcessing(false);
       setReplacingIndex(null);

@@ -175,7 +175,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   };
 
   // Project CRUD helpers
-  const handleMoveProject = (index: number, direction: 'up' | 'down') => {
+  const handleMoveProject = async (index: number, direction: 'up' | 'down') => {
     const newProjects = [...draft.projects];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newProjects.length) return;
@@ -188,10 +188,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     });
     const newDraft = { ...draft, projects: newProjects };
     setDraft(newDraft);
-    onSaveContent(newDraft);
+    setIsSaving(true);
+    try {
+      await onSaveContent(newDraft);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (e: any) {
+      setSaveError(e?.message || '순서 변경 저장 실패');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteProject = (id: string) => {
+  const handleDeleteProject = async (id: string) => {
     if (window.confirm('이 프로젝트를 삭제하시겠습니까?')) {
       const filtered = draft.projects.filter((p) => p.id !== id);
       filtered.forEach((p, idx) => {
@@ -199,9 +208,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       });
       const newDraft = { ...draft, projects: filtered };
       setDraft(newDraft);
-      onSaveContent(newDraft);
       if (editingProject?.id === id) {
         setEditingProject(null);
+      }
+      setIsSaving(true);
+      try {
+        await onSaveContent(newDraft);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } catch (e: any) {
+        setSaveError(e?.message || '프로젝트 삭제 실패');
+      } finally {
+        setIsSaving(false);
       }
     }
   };
@@ -1143,10 +1161,11 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
             {[
               { label: '상세페이지', val: 'DETAIL PAGE', type: 'detail-page' as const },
               { label: 'SNS 콘텐츠', val: 'SNS CONTENT', type: 'sns-content' as const },
-              { label: '쇼핑몰 메인배너', val: 'MAIN BANNER', type: 'main-banner' as const },
+              { label: '배너', val: 'BANNER', type: 'main-banner' as const },
               { label: '영상·모션', val: 'VIDEO & MOTION', type: 'video-motion' as const },
             ].map((c) => {
-              const isSelected = form.projectType === c.type || (c.type === 'video-motion' ? isVideoProject : form.category === c.val);
+              const isSelected = form.projectType === c.type || 
+                (c.type === 'video-motion' ? isVideoProject : (form.category === c.val || (c.val === 'BANNER' && (form.category === 'MAIN BANNER' || form.category === 'BANNER'))));
               return (
                 <button
                   key={c.val}
@@ -1168,7 +1187,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
             className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
-            placeholder="e.g. DETAIL PAGE, SNS CONTENT, MAIN BANNER, VIDEO & MOTION"
+            placeholder="e.g. DETAIL PAGE, SNS CONTENT, BANNER, VIDEO & MOTION"
           />
         </div>
       </div>
