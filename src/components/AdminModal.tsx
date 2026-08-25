@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Lock,
@@ -61,11 +61,33 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   // Selected project for editing in projects tab
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreatingNewProject, setIsCreatingNewProject] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
 
   // Reset draft when content changes
-  React.useEffect(() => {
+  useEffect(() => {
     setDraft(content);
   }, [content]);
+
+  // Lock body scroll and handle ESC key when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -108,6 +130,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     a.download = `portfolio-content-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleCopyJsonToClipboard = () => {
+    navigator.clipboard.writeText(JSON.stringify(draft, null, 2)).then(() => {
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 2500);
+    });
   };
 
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -197,34 +226,115 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/70 backdrop-blur-md flex items-center justify-center p-2 sm:p-6">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.97 }}
-        className="relative w-full max-w-5xl bg-[#181818] text-[#ECECE8] rounded-xl shadow-2xl overflow-hidden flex flex-col h-[94vh] sm:h-[90vh] border border-[#333330]"
-      >
-        {/* Top Header */}
-        <div className="bg-[#202020] px-6 py-4 border-b border-[#303030] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded bg-[#2C2C2A] text-white">
-              {isAdmin ? <Unlock className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-amber-400" />}
+    <div 
+      id="admin-modal-overlay"
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      {!isAdmin ? (
+        /* Password Authentication Screen - Compact, Centered, High Contrast Dialog */
+        <div
+          id="admin-login-dialog"
+          className="relative w-full max-w-md bg-[#181818] text-[#ECECE8] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#3A3A36] p-6 sm:p-8"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            className="absolute top-4 right-4 p-2 rounded-xl bg-[#242422] text-[#888880] hover:text-white hover:bg-[#333330] transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          <div className="flex flex-col items-center text-center space-y-4 pt-2">
+            <div className="w-14 h-14 rounded-2xl bg-[#2A2A28] border border-[#3A3A36] flex items-center justify-center text-amber-400 shadow-md">
+              <Lock className="w-7 h-7" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                <span>포트폴리오 관리자 콘솔</span>
-              </h2>
-              <p className="text-[11px] text-[#888880]">
-                모든 텍스트, 프로젝트 이미지, 접근 방식 및 이력을 실시간 수정합니다.
+
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white tracking-tight">포트폴리오 관리자 모드</h3>
+              <p className="text-xs text-[#999990] leading-relaxed">
+                모든 프로젝트와 소개 콘텐츠를 실시간 수정할 수 있습니다.
               </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            {isAdmin && (
+            <form onSubmit={handleLogin} className="w-full space-y-4 pt-2">
+              <div className="space-y-1.5 text-left">
+                <label className="text-[11px] font-mono text-slate-400 block text-center">
+                  관리자 비밀번호를 입력해주세요
+                </label>
+                <input
+                  type="password"
+                  placeholder="비밀번호 4자리 (기본: 1111)"
+                  value={passwordInput}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    setAuthError(false);
+                  }}
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-[#242422] border border-[#444440] text-white text-center text-sm tracking-widest focus:outline-none focus:border-amber-400 font-mono shadow-inner transition-colors"
+                />
+                {authError && (
+                  <p className="text-xs text-red-400 text-center font-medium pt-1">
+                    비밀번호가 일치하지 않습니다. 다시 입력해주세요.
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-3 rounded-xl bg-[#282826] text-[#A0A09A] text-xs font-bold hover:bg-[#333330] hover:text-white transition-colors cursor-pointer"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-white text-[#141414] text-xs font-bold uppercase tracking-wider hover:bg-[#EAEAEA] active:scale-[0.99] transition-all cursor-pointer shadow-lg"
+                >
+                  로그인
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : (
+        /* Admin Main Tabs Workspace */
+        <div
+          id="admin-workspace-dialog"
+          className="relative w-full max-w-5xl h-[94vh] sm:h-[90vh] bg-[#181818] text-[#ECECE8] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-[#333330]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Top Header */}
+          <div className="bg-[#202020] px-6 py-4 border-b border-[#303030] flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-[#2C2C2A] text-white">
+                <Unlock className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                  <span>포트폴리오 관리자 콘솔</span>
+                  <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full font-mono">
+                    ADMIN MODE
+                  </span>
+                </h2>
+                <p className="text-[11px] text-[#888880]">
+                  모든 텍스트, 프로젝트 이미지, 접근 방식 및 이력을 실시간 수정합니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleSave}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded text-xs font-semibold tracking-wider transition-all ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wider transition-all cursor-pointer ${
                   saveSuccess ? 'bg-emerald-600 text-white' : 'bg-white text-[#141414] hover:bg-[#EAEAE5]'
                 }`}
               >
@@ -240,93 +350,47 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                   </>
                 )}
               </button>
-            )}
-
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded hover:bg-[#333330] text-[#888880] hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content Body */}
-        {!isAdmin ? (
-          /* Password Authentication Screen */
-          <div className="p-8 sm:p-14 flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto">
-            <div className="w-14 h-14 rounded-full bg-[#2A2A28] border border-[#3A3A36] flex items-center justify-center text-amber-400">
-              <Lock className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-lg font-bold text-white">관리자 비밀번호 입력</h3>
-              <p className="text-xs text-[#999990]">
-                포트폴리오 내용 및 프로젝트를 수정하려면 비밀번호를 입력해주세요.
-              </p>
-            </div>
-
-            <form onSubmit={handleLogin} className="w-full space-y-4">
-              <div className="space-y-1 text-left">
-                <input
-                  type="password"
-                  placeholder="비밀번호 4자리"
-                  value={passwordInput}
-                  onChange={(e) => {
-                    setPasswordInput(e.target.value);
-                    setAuthError(false);
-                  }}
-                  autoFocus
-                  className="w-full px-4 py-3 rounded bg-[#242422] border border-[#40403C] text-white text-center text-sm tracking-widest focus:outline-none focus:border-white font-mono"
-                />
-                {authError && (
-                  <p className="text-[11px] text-red-400 text-center pt-1">
-                    비밀번호가 일치하지 않습니다.
-                  </p>
-                )}
-              </div>
 
               <button
-                type="submit"
-                className="w-full py-3 rounded bg-white text-[#141414] text-xs font-bold uppercase tracking-wider hover:bg-[#EAEAEA]"
+                onClick={onClose}
+                aria-label="관리자 창 닫기"
+                className="p-1.5 rounded-lg hover:bg-[#333330] text-[#888880] hover:text-white transition-colors cursor-pointer"
               >
-                관리자 로그인
+                <X className="w-5 h-5" />
               </button>
-            </form>
-          </div>
-        ) : (
-          /* Admin Main Tabs Workspace */
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Nav Tabs */}
-            <div className="bg-[#1E1E1C] px-6 border-b border-[#2C2C28] flex items-center gap-2 overflow-x-auto">
-              {[
-                { id: 'projects', label: '01. 프로젝트 관리 (Works)' },
-                { id: 'hero', label: '02. 메인 히어로 (Hero)' },
-                { id: 'approach', label: '03. 디자인 철학 (Approach)' },
-                { id: 'about', label: '04. 소개 & 스킬 & 이력 (About)' },
-                { id: 'contact', label: '05. 연락처 & 메타 (Contact)' },
-                { id: 'backup', label: '06. 데이터 백업 & 초기화' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id as any);
-                    setEditingProject(null);
-                    setIsCreatingNewProject(false);
-                  }}
-                  className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-white text-white font-bold bg-[#262624]'
-                      : 'border-transparent text-[#999990] hover:text-white'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
             </div>
+          </div>
 
-            {/* Tab Panels */}
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+          {/* Nav Tabs */}
+          <div className="bg-[#1E1E1C] px-6 border-b border-[#2C2C28] flex items-center gap-2 overflow-x-auto shrink-0">
+            {[
+              { id: 'projects', label: '01. 프로젝트 관리 (Works)' },
+              { id: 'hero', label: '02. 메인 히어로 (Hero)' },
+              { id: 'approach', label: '03. 디자인 철학 (Approach)' },
+              { id: 'about', label: '04. 소개 & 스킬 & 이력 (About)' },
+              { id: 'contact', label: '05. 연락처 & 메타 (Contact)' },
+              { id: 'backup', label: '06. 데이터 백업 & 초기화' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id as any);
+                  setEditingProject(null);
+                  setIsCreatingNewProject(false);
+                }}
+                className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
+                  activeTab === tab.id
+                    ? 'border-white text-white font-bold bg-[#262624]'
+                    : 'border-transparent text-[#999990] hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Panels */}
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8">
               {/* TAB 1: PROJECTS */}
               {activeTab === 'projects' && (
                 <div className="space-y-6">
@@ -394,23 +458,23 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
                       {/* Project Table / Cards */}
                       <div className="space-y-3">
-                        {draft.projects.map((proj, idx) => (
+                        {(draft.projects || []).map((proj, idx) => (
                           <div
                             key={proj.id}
                             className="p-4 rounded-lg bg-[#222220] border border-[#333330] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                           >
                             <div className="flex items-center gap-4">
                               <img
-                                src={proj.coverImage}
+                                src={proj.coverImage || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=85'}
                                 alt={proj.title}
                                 className="w-16 h-12 rounded object-cover bg-[#333330] border border-[#444440]"
                               />
                               <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono text-xs font-bold text-amber-400">
-                                    {proj.number}
+                                    {proj.number || String(idx + 1).padStart(2, '0')}
                                   </span>
-                                  <h4 className="text-sm font-bold text-white">{proj.title}</h4>
+                                  <h4 className="text-sm font-bold text-white">{proj.title || 'Untitled'}</h4>
                                   {proj.featuredInHero && (
                                     <span className="text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded font-mono">
                                       HERO FEATURED
@@ -418,7 +482,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                                   )}
                                 </div>
                                 <div className="text-xs text-[#888880] font-mono">
-                                  {proj.category} · {proj.period} · {proj.sections.length} 섹션
+                                  {proj.category || 'DETAIL PAGE'} · {proj.period || ''} · {(proj.sections || []).length} 섹션
                                 </div>
                               </div>
                             </div>
@@ -435,7 +499,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                               </button>
                               <button
                                 onClick={() => handleMoveProject(idx, 'down')}
-                                disabled={idx === draft.projects.length - 1}
+                                disabled={idx === (draft.projects || []).length - 1}
                                 title="아래로 이동"
                                 className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
                               >
@@ -783,29 +847,54 @@ export const AdminModal: React.FC<AdminModalProps> = ({
               {/* TAB 6: BACKUP & RESTORE */}
               {activeTab === 'backup' && (
                 <div className="space-y-6 max-w-2xl">
-                  <h3 className="text-base font-bold text-white">데이터 백업 & 복원</h3>
-                  <p className="text-xs text-[#888880]">
-                    수정한 포트폴리오 데이터를 JSON 파일로 내보내거나, 초기 샘플 데이터로 복원할 수 있습니다.
-                  </p>
+                  <h3 className="text-base font-bold text-white">클라우드 데이터베이스 (Firebase) 자동 동기화</h3>
+                  
+                  {/* Cloud Firebase Real-time explanation box */}
+                  <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/40 text-xs space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-emerald-400">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Firebase 클라우드 실시간 자동 동기화 활성화됨</span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed">
+                      관리자 모드에서 프로젝트를 추가하거나 수정하고 <strong>[변경사항 저장]</strong>을 누르면, <strong>Firebase Cloud Firestore</strong>에 즉시 저장되어 스마트폰, 다른 컴퓨터, Netlify 배포 사이트에 접속하는 <strong>모든 방문자에게 실시간으로 영구 반영</strong>됩니다.
+                    </p>
+                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                     <button
                       onClick={handleExportJson}
-                      className="p-5 rounded-lg bg-[#222220] border border-[#3A3A36] hover:border-white text-left space-y-2 transition-colors"
+                      className="p-4 rounded-lg bg-[#222220] border border-[#3A3A36] hover:border-amber-400 text-left space-y-2 transition-colors group"
                     >
-                      <div className="flex items-center gap-2 text-white font-bold text-xs">
+                      <div className="flex items-center gap-2 text-white font-bold text-xs group-hover:text-amber-400">
                         <Download className="w-4 h-4" />
-                        <span>JSON 백업 파일 내보내기</span>
+                        <span>JSON 파일 다운로드</span>
                       </div>
                       <p className="text-[11px] text-[#888880]">
-                        현재 작성된 모든 프로젝트 및 텍스트를 파일로 다운로드합니다.
+                        현재 작성된 전체 포트폴리오 데이터를 JSON 파일로 다운로드합니다.
                       </p>
                     </button>
 
-                    <label className="p-5 rounded-lg bg-[#222220] border border-[#3A3A36] hover:border-white text-left space-y-2 cursor-pointer transition-colors block">
+                    <button
+                      onClick={handleCopyJsonToClipboard}
+                      className={`p-4 rounded-lg border text-left space-y-2 transition-all ${
+                        copiedJson
+                          ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
+                          : 'bg-[#222220] border-[#3A3A36] hover:border-pink-400 text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 font-bold text-xs">
+                        <Copy className="w-4 h-4" />
+                        <span>{copiedJson ? '복사 완료!' : 'JSON 클립보드 복사'}</span>
+                      </div>
+                      <p className="text-[11px] text-[#888880]">
+                        AI에게 데이터 전달 또는 영구 코드 적용 시 간편하게 복사할 수 있습니다.
+                      </p>
+                    </button>
+
+                    <label className="p-4 rounded-lg bg-[#222220] border border-[#3A3A36] hover:border-white text-left space-y-2 cursor-pointer transition-colors block">
                       <div className="flex items-center gap-2 text-white font-bold text-xs">
                         <Upload className="w-4 h-4" />
-                        <span>JSON 백업 파일 불러오기</span>
+                        <span>JSON 백업 불러오기</span>
                       </div>
                       <p className="text-[11px] text-[#888880]">
                         이전에 저장해 둔 JSON 백업 파일을 업로드하여 복원합니다.
@@ -828,17 +917,17 @@ export const AdminModal: React.FC<AdminModalProps> = ({
             </div>
 
             {/* Bottom Footer Action Bar */}
-            <div className="bg-[#202020] px-6 py-3 border-t border-[#303030] flex items-center justify-between text-xs">
+            <div className="bg-[#202020] px-6 py-3 border-t border-[#303030] flex items-center justify-between text-xs shrink-0">
               <button
                 onClick={handleLogout}
-                className="text-[#888880] hover:text-white font-mono"
+                className="text-[#888880] hover:text-white font-mono cursor-pointer transition-colors"
               >
                 관리자 로그아웃
               </button>
 
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-4 py-2 rounded bg-white text-[#141414] font-bold hover:bg-[#EAEAEA]"
+                className="flex items-center gap-1.5 px-4 py-2 rounded bg-white text-[#141414] font-bold hover:bg-[#EAEAEA] cursor-pointer transition-all shadow"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>저장하고 사이트에 반영</span>
@@ -846,10 +935,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
             </div>
           </div>
         )}
-      </motion.div>
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
 // Sub-component: In-depth Project Editor
 interface ProjectEditorProps {

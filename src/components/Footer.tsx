@@ -29,8 +29,14 @@ export const Footer: React.FC<FooterProps> = ({ content, onOpenAdmin, isAdmin })
         <div className="flex items-center gap-6">
           <button
             id="footer-admin-btn"
-            onClick={onOpenAdmin}
-            className="flex items-center gap-1.5 hover:text-[#EC4899] transition-colors"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenAdmin();
+            }}
+            aria-label="포트폴리오 관리자 모드 열기"
+            className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-slate-100 hover:text-[#EC4899] transition-colors cursor-pointer"
           >
             {isAdmin ? (
               <>
@@ -39,7 +45,7 @@ export const Footer: React.FC<FooterProps> = ({ content, onOpenAdmin, isAdmin })
               </>
             ) : (
               <>
-                <Lock className="w-3.5 h-3.5 opacity-70" />
+                <Lock className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#EC4899]" />
                 <span>관리</span>
               </>
             )}
@@ -47,8 +53,9 @@ export const Footer: React.FC<FooterProps> = ({ content, onOpenAdmin, isAdmin })
 
           <button
             id="back-to-top-btn"
+            type="button"
             onClick={scrollToTop}
-            className="flex items-center gap-1 hover:text-[#EC4899] transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 hover:text-[#EC4899] transition-colors cursor-pointer"
           >
             <span>TOP</span>
             <ArrowUp className="w-3.5 h-3.5" />

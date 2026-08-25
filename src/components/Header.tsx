@@ -4,8 +4,6 @@ import { SiteContent } from '../types';
 
 interface HeaderProps {
   content: SiteContent;
-  onOpenAdmin?: () => void;
-  isAdmin?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({ content }) => {
@@ -55,8 +53,8 @@ export const Header: React.FC<HeaderProps> = ({ content }) => {
         </a>
 
         {/* Desktop Navigation */}
-        <nav id="desktop-nav" className="hidden md:flex items-center gap-8">
-          <div className="flex items-center gap-8 text-xs uppercase font-bold tracking-widest text-[#475569]">
+        <nav id="desktop-nav" className="hidden md:flex items-center gap-6">
+          <div className="flex items-center gap-7 text-xs uppercase font-bold tracking-widest text-[#475569]">
             {navLinks.map((link) => (
               <a
                 key={link.name}
@@ -78,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({ content }) => {
         </nav>
 
         {/* Mobile menu button */}
-        <div className="flex items-center gap-3 md:hidden">
+        <div className="flex items-center gap-2 md:hidden">
           <button
             id="mobile-menu-toggle"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Portfolio content document is publicly readable by anyone (visitors)
+    // and writable for content updates
+    match /portfolio_content/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Default fallback
+    match /{document=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

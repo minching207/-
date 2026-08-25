@@ -15,7 +15,15 @@ import { ProjectDetailModal } from './components/ProjectDetailModal';
 import { ResumeModal } from './components/ResumeModal';
 import { AdminModal } from './components/AdminModal';
 import { SiteContent, Project } from './types';
-import { loadSiteContent, saveSiteContent, resetToDefaultContent, checkAdminSession } from './utils/storage';
+import { 
+  loadSiteContent, 
+  loadSiteContentAsync, 
+  saveSiteContent, 
+  resetToDefaultContent, 
+  checkAdminSession,
+  mergeWithInitial 
+} from './utils/storage';
+import { subscribeToRemoteContent } from './lib/firebase';
 
 export default function App() {
   const [content, setContent] = useState<SiteContent>(loadSiteContent);
@@ -23,6 +31,24 @@ export default function App() {
   const [isResumeOpen, setIsResumeOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(checkAdminSession);
+
+  // 1. Hydrate from Cloud Firestore & IndexedDB on initial mount
+  useEffect(() => {
+    loadSiteContentAsync().then((loadedContent) => {
+      if (loadedContent) {
+        setContent(loadedContent);
+      }
+    });
+
+    // 2. Real-time listener: When admin edits content, visitors see updates instantly
+    const unsubscribe = subscribeToRemoteContent((remoteContent) => {
+      if (remoteContent) {
+        setContent(mergeWithInitial(remoteContent));
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Sync title when metadata changes
   useEffect(() => {
@@ -50,11 +76,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white text-[#0F172A] selection:bg-[#EC4899] selection:text-white font-sans antialiased">
       {/* Top Fixed Minimalist Navigation */}
-      <Header
-        content={content}
-        onOpenAdmin={() => setIsAdminOpen(true)}
-        isAdmin={isAdmin}
-      />
+      <Header content={content} />
 
       {/* Main Content Flow */}
       <main id="portfolio-main">
@@ -64,7 +86,7 @@ export default function App() {
           onSelectProject={(proj) => setSelectedProject(proj)}
         />
 
-        {/* 01 / Selected Works (4 curated detail page & content projects) */}
+        {/* 01 / Selected Works (curated detail page & content projects) */}
         <SelectedWorks
           projects={content.projects}
           onSelectProject={(proj) => setSelectedProject(proj)}
