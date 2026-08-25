@@ -2,7 +2,7 @@
  * High-performance browser-side image optimization
  * Resizes large images to display-ready resolutions and compresses to lightweight WebP/JPEG
  */
-export async function optimizeImageFile(file: File, maxDimension = 1600, quality = 0.84): Promise<string> {
+export async function optimizeImageFile(file: File, maxDimension = 1400, quality = 0.80): Promise<string> {
   const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
   const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
 

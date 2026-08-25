@@ -93,7 +93,7 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
       return assembledContent as SiteContent;
     }
   } catch (error) {
-    console.warn('[Firebase] assembleFromCollection error:', error);
+    console.warn('[Firebase] assembleFromCollection warning:', error);
   }
   return null;
 }
@@ -103,7 +103,6 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
  */
 export async function getRemoteContent(): Promise<SiteContent | null> {
   // 1. Primary approach: Assemble from modular project collection + metadata
-  // This completely bypasses the 1MB single-document limit
   const collectionContent = await assembleFromCollection();
   if (collectionContent && collectionContent.projects && collectionContent.projects.length > 0) {
     return collectionContent;
@@ -128,9 +127,10 @@ export async function getRemoteContent(): Promise<SiteContent | null> {
 
 /**
  * Save portfolio content to Firestore:
- * - Saves metadata document (live_meta) with site settings & project order
- * - Saves each project as an independent document in `portfolio_projects` collection
- * - Automatically cleans up deleted projects from the collection
+ * - Saves each project as an independent document in `portfolio_projects` collection FIRST
+ * - Waits for all project documents to write successfully
+ * - Cleans up deleted project documents from the collection
+ * - Updates metadata document (`live_meta`) LAST, ensuring real-time listeners receive complete data
  * - Prevents the Firestore 1MB single document size limit entirely!
  */
 export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
@@ -140,29 +140,37 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
     const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
     const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
 
-    // 1. Save metadata + project ordering
-    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
-    await setDoc(metaRef, {
-      meta: cleanedContent.meta,
-      hero: cleanedContent.hero,
-      approach: cleanedContent.approach,
-      about: cleanedContent.about,
-      contact: cleanedContent.contact,
-      projectOrder: currentProjectList.map((p: Project) => p.id),
-      updatedAt: now,
-    }, { merge: true });
-
-    // 2. Save individual project documents into portfolio_projects collection
-    const projectSavePromises = currentProjectList.map((proj: Project) => {
+    // 1. Save all individual project documents into portfolio_projects collection FIRST
+    const projectSavePromises = currentProjectList.map(async (proj: Project) => {
       const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
-      return setDoc(projRef, {
+      
+      // Clean sections to ensure array elements are not undefined
+      const sanitizedSections = (proj.sections || []).map((sec, sIdx) => {
+        const rawImgs = Array.isArray(sec.images) ? sec.images.filter(Boolean) : (sec.imageUrl ? [sec.imageUrl] : []);
+        return {
+          id: sec.id || `sec-${sIdx + 1}`,
+          title: sec.title || `0${sIdx + 1}. SECTION`,
+          caption: sec.caption || '',
+          imageUrl: rawImgs[0] || sec.imageUrl || '',
+          images: rawImgs,
+          layoutMode: sec.layoutMode || 'seamless',
+        };
+      });
+
+      const sanitizedProject: Project = {
         ...proj,
+        sections: sanitizedSections,
+      };
+
+      return setDoc(projRef, {
+        ...sanitizedProject,
         updatedAt: now,
-      }, { merge: true });
+      });
     });
+
     await Promise.all(projectSavePromises);
 
-    // 3. Clean up any deleted projects from the collection
+    // 2. Clean up any deleted projects from the collection
     try {
       const projectsCol = collection(db, PROJECTS_COLLECTION);
       const existingSnap = await getDocs(projectsCol);
@@ -179,10 +187,21 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
       console.warn('[Firebase] Project cleanup notice:', cleanupErr);
     }
 
-    // 4. Save lightweight sync beacon into live document without heavy image bloat
+    // 3. Save metadata + project ordering LAST (This triggers onSnapshot AFTER projects are written!)
+    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
+    await setDoc(metaRef, {
+      meta: cleanedContent.meta,
+      hero: cleanedContent.hero,
+      approach: cleanedContent.approach,
+      about: cleanedContent.about,
+      contact: cleanedContent.contact,
+      projectOrder: currentProjectList.map((p: Project) => p.id),
+      updatedAt: now,
+    }, { merge: true });
+
+    // 4. Save lightweight sync beacon into live document for backwards compatibility
     try {
       const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-      // Lightweight version without huge sliced images to guarantee < 50KB size
       const lightweightProjects = currentProjectList.map((p: Project) => ({
         id: p.id,
         number: p.number,
@@ -213,7 +232,13 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
     return { success: true };
   } catch (error: any) {
     console.error('[Firebase] Save to Firestore failed:', error);
-    const errMsg = error?.message || '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
+    const rawMsg = error?.message || '';
+    let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
+    if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
+      errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
+    } else if (rawMsg) {
+      errMsg = `클라우드 저장 오류: ${rawMsg}`;
+    }
     return { success: false, error: errMsg };
   }
 }

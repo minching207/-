@@ -96,7 +96,7 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
 
     try {
       if (isImageFile) {
-        const optimizedDataUrl = await optimizeImageFile(file, 1600, 0.84);
+        const optimizedDataUrl = await optimizeImageFile(file, 1400, 0.80);
         onChange(optimizedDataUrl);
       } else if (isVideoFile) {
         if (file.size > 25 * 1024 * 1024) {
@@ -391,7 +391,7 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
       }
 
       try {
-        const optimizedDataUrl = await optimizeImageFile(file, 1600, 0.84);
+        const optimizedDataUrl = await optimizeImageFile(file, 1400, 0.80);
         newImages.push(optimizedDataUrl);
       } catch (err) {
         console.error('Error reading/optimizing file:', file.name, err);
@@ -410,7 +410,7 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
     if (replacingIndex === null) return;
     setIsProcessing(true);
     try {
-      const optimizedDataUrl = await optimizeImageFile(file, 1600, 0.84);
+      const optimizedDataUrl = await optimizeImageFile(file, 1400, 0.80);
       const updated = [...images];
       updated[replacingIndex] = optimizedDataUrl;
       onChange(updated);

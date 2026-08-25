@@ -189,10 +189,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     const newDraft = { ...draft, projects: newProjects };
     setDraft(newDraft);
     setIsSaving(true);
+    setSaveError(null);
     try {
-      await onSaveContent(newDraft);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      const res = await onSaveContent(newDraft);
+      if (res && !res.success) {
+        setSaveError(res.error || '순서 변경 저장 실패');
+      } else {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      }
     } catch (e: any) {
       setSaveError(e?.message || '순서 변경 저장 실패');
     } finally {
@@ -212,10 +217,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         setEditingProject(null);
       }
       setIsSaving(true);
+      setSaveError(null);
       try {
-        await onSaveContent(newDraft);
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 2000);
+        const res = await onSaveContent(newDraft);
+        if (res && !res.success) {
+          setSaveError(res.error || '프로젝트 삭제 실패');
+        } else {
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 2000);
+        }
       } catch (e: any) {
         setSaveError(e?.message || '프로젝트 삭제 실패');
       } finally {
@@ -236,10 +246,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     const newDraft = { ...draft, projects: updatedProjects };
     setDraft(newDraft);
     setIsSaving(true);
+    setSaveError(null);
     try {
-      await onSaveContent(newDraft);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2500);
+      const res = await onSaveContent(newDraft);
+      if (res && !res.success) {
+        setSaveError(res.error || '복제본 저장 실패');
+      } else {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2500);
+      }
     } catch (e: any) {
       setSaveError(e?.message || '저장 중 오류 발생');
     } finally {
@@ -260,10 +275,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     setEditingProject(null);
     setIsCreatingNewProject(false);
     setIsSaving(true);
+    setSaveError(null);
     try {
-      await onSaveContent(newDraft);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2500);
+      const res = await onSaveContent(newDraft);
+      if (res && !res.success) {
+        setSaveError(res.error || '프로젝트 저장에 실패했습니다.');
+      } else {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2500);
+      }
     } catch (e: any) {
       setSaveError(e?.message || '저장 중 오류 발생');
     } finally {
