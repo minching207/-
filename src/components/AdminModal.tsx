@@ -26,6 +26,8 @@ import {
   Video,
   Clock,
   Copy,
+  Hash,
+  Tag,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SiteContent, Project, DesignFocusItem, ProjectSection, ApproachStep, ExperienceItem, VideoKeyframe } from '../types';
@@ -1147,6 +1149,22 @@ interface ProjectEditorProps {
 
 const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel }) => {
   const [form, setForm] = useState<Project>(project);
+  const [newTagInput, setNewTagInput] = useState('');
+
+  const handleAddTag = (tagToAdd?: string) => {
+    const tag = (tagToAdd || newTagInput).trim().replace(/^#/, '');
+    if (!tag) return;
+    const currentTags = form.tags || [];
+    if (!currentTags.includes(tag)) {
+      setForm({ ...form, tags: [...currentTags, tag] });
+    }
+    if (!tagToAdd) setNewTagInput('');
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const updatedTags = (form.tags || []).filter((t) => t !== tagToRemove);
+    setForm({ ...form, tags: updatedTags });
+  };
 
   const handleAddDesignFocus = () => {
     setForm({
@@ -1934,6 +1952,118 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
             onChange={(e) => setForm({ ...form, client: e.target.value })}
             className="w-full px-2.5 py-1.5 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
           />
+        </div>
+      </div>
+
+      {/* Hashtags Editor (작업물 목록 하단 해시태그 편집) */}
+      <div className="p-4 rounded-xl bg-[#242422] border border-[#3A3A36] space-y-3 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <label className="text-xs font-mono text-amber-400 font-bold flex items-center gap-1.5">
+              <Hash className="w-4 h-4 text-amber-400" />
+              <span>작업물 해시태그 편집 (Tags)</span>
+            </label>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              작업물 목록 카드 하단에 표시되는 키워드 태그입니다. 자유롭게 추가, 삭제, 텍스트 입력할 수 있습니다.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400 self-start sm:self-auto">
+            현재 {(form.tags || []).length}개 태그 등록됨
+          </span>
+        </div>
+
+        {/* Current Active Tags */}
+        <div className="flex flex-wrap items-center gap-2 min-h-[38px] p-2.5 rounded-lg bg-[#1C1C1A] border border-[#333330]">
+          {(form.tags || []).length > 0 ? (
+            form.tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-[#2C2C28] text-amber-300 border border-amber-500/30 group shadow-2xs"
+              >
+                <span>#{tag}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTag(tag)}
+                  className="p-0.5 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-950/60 transition-colors"
+                  title="이 태그 삭제"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-slate-500 font-mono italic">
+              등록된 태그가 없습니다. 아래 입력창에서 태그를 추가해보세요.
+            </span>
+          )}
+        </div>
+
+        {/* Tag Input Field & Quick Add */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-xs">#</span>
+            <input
+              type="text"
+              value={newTagInput}
+              onChange={(e) => setNewTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddTag();
+                }
+              }}
+              placeholder="추가할 태그 입력 (예: 브랜드상세페이지, 올리브영, 기획포함) 후 Enter 또는 [추가]"
+              className="w-full pl-7 pr-3 py-2 rounded-lg bg-[#1C1C1A] border border-[#3A3A36] text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => handleAddTag()}
+            className="px-4 py-2 rounded-lg bg-[#333330] hover:bg-[#3E3E3A] text-amber-300 text-xs font-mono font-bold border border-[#444440] flex items-center justify-center gap-1.5 transition-all shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>태그 추가</span>
+          </button>
+        </div>
+
+        {/* Quick Recommendation Tags */}
+        <div className="space-y-1.5 pt-1">
+          <span className="text-[10px] font-mono text-slate-400 block font-semibold">
+            ⚡ 추천 태그 (클릭 시 바로 추가):
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              '상세페이지기획',
+              'USP시각화',
+              '포토샵합성',
+              '올리브영입점',
+              '와디즈펀딩',
+              'SNS광고소재',
+              '모션그래픽',
+              '숏폼영상',
+              '메인배너',
+              '브랜드디자인',
+              '매출상승',
+              '클로즈업보정',
+            ].map((suggested) => {
+              const isAlreadyAdded = (form.tags || []).includes(suggested);
+              return (
+                <button
+                  key={suggested}
+                  type="button"
+                  disabled={isAlreadyAdded}
+                  onClick={() => handleAddTag(suggested)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono transition-all border ${
+                    isAlreadyAdded
+                      ? 'bg-[#1C1C1A] text-slate-600 border-transparent cursor-not-allowed opacity-50'
+                      : 'bg-[#2A2A28] text-slate-300 hover:text-amber-300 hover:bg-[#343430] border-[#3A3A36]'
+                  }`}
+                >
+                  +{suggested}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
