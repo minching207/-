@@ -412,19 +412,47 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                   <span className="text-xs font-mono font-bold text-slate-500 block tracking-wider">
                     KEY DESIGN FOCUS POINTS
                   </span>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    {project.designFocus.map((df, dfIdx) => (
-                      <div key={df.id || dfIdx} className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 flex flex-col justify-between">
-                        <div className="text-xs font-bold text-slate-900 font-mono flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899]" />
-                          <span>{df.title}</span>
+
+                  {project.designFocus.length === 1 ? (
+                    /* Single Focus Point - Expansive Horizontal Banner Layout */
+                    <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-[#FDF2F8]/80 via-slate-50 to-white border border-[#FBCFE8]/90 luxury-card-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6">
+                      <div className="flex items-center gap-3.5 shrink-0 sm:border-r sm:border-pink-200/80 sm:pr-6">
+                        <div className="w-9 h-9 rounded-xl bg-pink-100/90 text-[#EC4899] flex items-center justify-center font-mono font-extrabold text-xs shrink-0 border border-pink-200">
+                          01
                         </div>
-                        <p className="text-xs text-slate-600 leading-relaxed pt-1">
-                          {df.description}
-                        </p>
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-mono text-pink-600 font-bold uppercase tracking-wider block">
+                            CORE DESIGN STRATEGY
+                          </span>
+                          <h4 className="text-sm sm:text-base font-bold text-[#0F172A] font-mono">
+                            {project.designFocus[0].title}
+                          </h4>
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed flex-1 font-sans">
+                        {project.designFocus[0].description}
+                      </p>
+                    </div>
+                  ) : (
+                    /* Multi Focus Points - Balanced Responsive Grid */
+                    <div className={`grid gap-3.5 ${
+                      project.designFocus.length === 2
+                        ? 'grid-cols-1 sm:grid-cols-2'
+                        : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                    }`}>
+                      {project.designFocus.map((df, dfIdx) => (
+                        <div key={df.id || dfIdx} className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 flex flex-col justify-between">
+                          <div className="text-xs font-bold text-slate-900 font-mono flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899]" />
+                            <span>{df.title}</span>
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed pt-1">
+                            {df.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

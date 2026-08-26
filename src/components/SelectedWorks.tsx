@@ -208,12 +208,10 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ duration: 0.5, delay: index >= INITIAL_VISIBLE_COUNT ? (index - INITIAL_VISIBLE_COUNT) * 0.08 : index * 0.05 }}
                     onClick={() => onSelectProject(project)}
-                    className="group cursor-pointer flex flex-col justify-between space-y-6"
+                    className="group cursor-pointer flex flex-col h-full"
                   >
                     {/* Image / Media Container with rich visual cues */}
-                    <div className={`relative ${
-                      isBanner ? 'aspect-[16/9]' : 'aspect-[16/11] sm:aspect-[16/10]'
-                    } rounded-3xl overflow-hidden bg-slate-900 border-2 border-slate-200 hover:border-[#EC4899] luxury-card-shadow transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-1.5`}>
+                    <div className="relative w-full aspect-[16/10] rounded-3xl overflow-hidden bg-slate-900 border-2 border-slate-200 hover:border-[#EC4899] luxury-card-shadow transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-1.5 shrink-0">
                       <img
                         src={project.coverImage}
                         alt={project.title}
@@ -271,43 +269,49 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
                     </div>
 
                     {/* Card Meta Content with high contrast */}
-                    <div className="space-y-3 px-1">
-                      {/* Category & Badge */}
-                      <div className="flex items-center justify-between text-xs">
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold border ${badge.colorClass}`}>
-                          <BadgeIcon className="w-3.5 h-3.5" />
-                          <span>{badge.label}</span>
+                    <div className="mt-5 flex-1 flex flex-col justify-between px-1">
+                      <div className="space-y-3">
+                        {/* Category & Badge */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold border ${badge.colorClass}`}>
+                            <BadgeIcon className="w-3.5 h-3.5" />
+                            <span>{badge.label}</span>
+                          </div>
+                          <span className="text-slate-400 font-mono font-medium">{project.period}</span>
                         </div>
-                        <span className="text-slate-400 font-mono font-medium">{project.period}</span>
-                      </div>
 
-                      {/* Title */}
-                      <h3 className="text-xl sm:text-2xl font-bold text-[#0F172A] tracking-tight group-hover:text-[#EC4899] transition-colors flex items-center justify-between">
-                        <span>{project.title}</span>
-                        <div className="p-2 rounded-full bg-white group-hover:bg-[#FDF2F8] transition-colors border border-slate-200 shadow-2xs">
-                          <ArrowUpRight className="w-4 h-4 text-[#EC4899] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                        </div>
-                      </h3>
+                        {/* Title */}
+                        <h3 className="text-xl sm:text-2xl font-bold text-[#0F172A] tracking-tight group-hover:text-[#EC4899] transition-colors flex items-center justify-between">
+                          <span>{project.title}</span>
+                          <div className="p-2 rounded-full bg-white group-hover:bg-[#FDF2F8] transition-colors border border-slate-200 shadow-2xs shrink-0 ml-2">
+                            <ArrowUpRight className="w-4 h-4 text-[#EC4899] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                          </div>
+                        </h3>
 
-                      {/* Summary */}
-                      <p className="text-sm text-[#475569] leading-relaxed line-clamp-2 font-normal">
-                        {project.summary}
-                      </p>
+                        {/* Summary */}
+                        {project.summary && (
+                          <p className="text-sm text-[#475569] leading-relaxed line-clamp-2 font-normal">
+                            {project.summary}
+                          </p>
+                        )}
 
-                      {/* Tags */}
-                      <div className="pt-2 flex flex-wrap items-center gap-2">
-                        {project.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="text-[11px] font-mono font-semibold px-3 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs"
-                          >
-                            #{tag}
-                          </span>
-                        ))}
+                        {/* Tags */}
+                        {(project.tags || []).length > 0 && (
+                          <div className="pt-1 flex flex-wrap items-center gap-2">
+                            {project.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-[11px] font-mono font-semibold px-3 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Action Link */}
-                      <div className="pt-3 flex items-center gap-2 text-xs font-bold tracking-wider text-[#0F172A] group-hover:text-[#EC4899] transition-colors border-t border-slate-100">
+                      <div className="pt-4 mt-4 flex items-center gap-2 text-xs font-bold tracking-wider text-[#0F172A] group-hover:text-[#EC4899] transition-colors border-t border-slate-100">
                         <span>상세 기획 및 작업물 확인하기</span>
                         <span className="font-mono text-[#EC4899] text-sm">→</span>
                       </div>
