@@ -74,7 +74,10 @@ export function mergeWithInitial(parsed: any): SiteContent {
   if (!parsed || typeof parsed !== 'object') return initialSiteContent;
 
   const mergedProjects = Array.isArray(parsed.projects) && parsed.projects.length > 0 
-    ? parsed.projects 
+    ? parsed.projects.map((p: any) => ({
+        ...p,
+        isPublished: p.isPublished !== false,
+      }))
     : initialSiteContent.projects;
 
   return {

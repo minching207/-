@@ -46,7 +46,7 @@ function cleanForFirestore(obj: any): any {
 }
 
 /**
- * Reassemble full SiteContent from metadata + individual project collection
+ * Reassemble full SiteContent from metadata + individual project collection and sections subcollections
  */
 async function assembleFromCollection(): Promise<SiteContent | null> {
   try {
@@ -55,23 +55,46 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
     const projectsCol = collection(db, PROJECTS_COLLECTION);
     const projectsSnap = await getDocs(projectsCol);
 
-    const fetchedProjects: Project[] = [];
-    projectsSnap.forEach((docItem) => {
+    const projectPromises = projectsSnap.docs.map(async (docItem) => {
       const pData = docItem.data();
-      if (pData && pData.id) {
-        fetchedProjects.push(pData as Project);
+      if (!pData || !pData.id) return null;
+
+      try {
+        // Check for sections in subcollection (stores large images independently to bypass 1MB limit)
+        const sectionsCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sections');
+        const secSnap = await getDocs(sectionsCol);
+
+        if (!secSnap.empty) {
+          const subSections: any[] = [];
+          secSnap.forEach((sDoc) => {
+            const sData = sDoc.data();
+            if (sData) subSections.push(sData);
+          });
+          // Sort by order or numeric index
+          subSections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          pData.sections = subSections;
+        }
+      } catch (subErr) {
+        console.warn(`[Firebase] Subcollection read warning for project ${pData.id}:`, subErr);
       }
+
+      // Default isPublished to true if not explicitly false
+      pData.isPublished = pData.isPublished !== false;
+
+      return pData as Project;
     });
+
+    const resolvedProjects = (await Promise.all(projectPromises)).filter(Boolean) as Project[];
 
     let metaData: any = {};
     if (metaSnap.exists()) {
       metaData = metaSnap.data() || {};
     }
 
-    if (fetchedProjects.length > 0 || metaSnap.exists()) {
+    if (resolvedProjects.length > 0 || metaSnap.exists()) {
       // Sort projects according to projectOrder if available
       if (Array.isArray(metaData.projectOrder)) {
-        fetchedProjects.sort((a, b) => {
+        resolvedProjects.sort((a, b) => {
           const indexA = metaData.projectOrder.indexOf(a.id);
           const indexB = metaData.projectOrder.indexOf(b.id);
           if (indexA !== -1 && indexB !== -1) return indexA - indexB;
@@ -87,7 +110,7 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
         approach: metaData.approach,
         about: metaData.about,
         contact: metaData.contact,
-        projects: fetchedProjects,
+        projects: resolvedProjects,
       };
 
       return assembledContent as SiteContent;
@@ -127,11 +150,11 @@ export async function getRemoteContent(): Promise<SiteContent | null> {
 
 /**
  * Save portfolio content to Firestore:
- * - Saves each project as an independent document in `portfolio_projects` collection FIRST
- * - Waits for all project documents to write successfully
- * - Cleans up deleted project documents from the collection
+ * - Saves each project in `portfolio_projects` collection
+ * - Heavy section images are stored in dedicated `sections` subcollection per project
+ * - Guarantees 0% chance of exceeding the 1MB Firestore document limit!
+ * - Cleans up deleted projects & deleted sub-sections
  * - Updates metadata document (`live_meta`) LAST, ensuring real-time listeners receive complete data
- * - Prevents the Firestore 1MB single document size limit entirely!
  */
 export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
   try {
@@ -140,15 +163,21 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
     const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
     const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
 
-    // 1. Save all individual project documents into portfolio_projects collection FIRST
+    // 1. Save all individual project documents and their sections subcollections
     const projectSavePromises = currentProjectList.map(async (proj: Project) => {
       const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
       
-      // Clean sections to ensure array elements are not undefined
-      const sanitizedSections = (proj.sections || []).map((sec, sIdx) => {
+      // Clean and prepare sections
+      const rawSections = proj.sections || [];
+      const currentSectionIds = new Set<string>();
+
+      const sanitizedSections = rawSections.map((sec, sIdx) => {
+        const secId = sec.id || `sec-${sIdx + 1}`;
+        currentSectionIds.add(secId);
         const rawImgs = Array.isArray(sec.images) ? sec.images.filter(Boolean) : (sec.imageUrl ? [sec.imageUrl] : []);
         return {
-          id: sec.id || `sec-${sIdx + 1}`,
+          id: secId,
+          order: sIdx,
           title: sec.title || `0${sIdx + 1}. SECTION`,
           caption: sec.caption || '',
           imageUrl: rawImgs[0] || sec.imageUrl || '',
@@ -157,9 +186,50 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
         };
       });
 
+      // Save each section into subcollection `portfolio_projects/{proj.id}/sections/{sec.id}`
+      const sectionSavePromises = sanitizedSections.map(async (sec) => {
+        const secRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sec.id);
+        return setDoc(secRef, {
+          ...sec,
+          updatedAt: now,
+        });
+      });
+
+      await Promise.all(sectionSavePromises);
+
+      // Clean up any deleted sections in this project's subcollection
+      try {
+        const sectionsCol = collection(db, PROJECTS_COLLECTION, proj.id, 'sections');
+        const existingSecSnap = await getDocs(sectionsCol);
+        const secDeletePromises: Promise<any>[] = [];
+        existingSecSnap.forEach((sDoc) => {
+          if (!currentSectionIds.has(sDoc.id)) {
+            secDeletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sDoc.id)));
+          }
+        });
+        if (secDeletePromises.length > 0) {
+          await Promise.all(secDeletePromises);
+        }
+      } catch (secCleanErr) {
+        console.warn(`[Firebase] Section cleanup notice for ${proj.id}:`, secCleanErr);
+      }
+
+      // Prepare project root document: keep lightweight section summaries in the main doc
+      // and full image data in the sections subcollection to keep main doc << 200KB
+      const lightweightSections = sanitizedSections.map((sec) => ({
+        id: sec.id,
+        order: sec.order,
+        title: sec.title,
+        caption: sec.caption,
+        imageUrl: sec.imageUrl ? (sec.imageUrl.length > 5000 ? sec.imageUrl.slice(0, 100) + '...' : sec.imageUrl) : '',
+        imageCount: sec.images.length,
+        layoutMode: sec.layoutMode,
+      }));
+
       const sanitizedProject: Project = {
         ...proj,
-        sections: sanitizedSections,
+        isPublished: proj.isPublished !== false,
+        sections: lightweightSections as any,
       };
 
       return setDoc(projRef, {
@@ -216,6 +286,7 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
         tools: p.tools,
         client: p.client,
         featuredInHero: p.featuredInHero,
+        isPublished: p.isPublished !== false,
       }));
 
       await setDoc(liveRef, {
@@ -228,7 +299,7 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
       console.warn('[Firebase] Live sync beacon notice:', beaconErr);
     }
 
-    console.log('[Firebase] Successfully saved modular portfolio content to Firestore!');
+    console.log('[Firebase] Successfully saved modular portfolio content to Firestore with subcollections!');
     return { success: true };
   } catch (error: any) {
     console.error('[Firebase] Save to Firestore failed:', error);

@@ -10,7 +10,8 @@ interface HeroProps {
 }
 
 export const Hero: React.FC<HeroProps> = ({ content, onSelectProject }) => {
-  const featuredProject = content.projects.find((p) => p.featuredInHero) || content.projects[0];
+  const publishedProjects = content.projects.filter((p) => p.isPublished !== false);
+  const featuredProject = publishedProjects.find((p) => p.featuredInHero) || publishedProjects[0] || content.projects[0];
 
   const getTagBadgeStyle = (tag: string, index: number) => {
     const lower = tag.toLowerCase();

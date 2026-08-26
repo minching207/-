@@ -84,6 +84,7 @@ export interface Project {
   };
   
   featuredInHero?: boolean;
+  isPublished?: boolean; // Visibility toggle: true/undefined for published (노출), false for hidden (숨김)
 }
 
 export interface ApproachStep {

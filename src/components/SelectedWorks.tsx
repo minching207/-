@@ -39,7 +39,9 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
     { id: 'VIDEO & MOTION', label: '영상·모션', subLabel: 'VIDEO & MOTION', icon: PlayCircle },
   ];
 
-  const filteredProjects = projects.filter((p) => {
+  const publishedProjects = projects.filter((p) => p.isPublished !== false);
+
+  const filteredProjects = publishedProjects.filter((p) => {
     if (activeFilter === 'ALL') return true;
     const cat = (p.category || '').toUpperCase();
     const type = p.projectType || '';
@@ -151,7 +153,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
             {categories.map((cat) => {
               const Icon = cat.icon;
               const isActive = activeFilter === cat.id;
-              const count = projects.filter((p) => {
+              const count = publishedProjects.filter((p) => {
                 if (cat.id === 'ALL') return true;
                 const pCat = (p.category || '').toUpperCase();
                 const pType = p.projectType || '';

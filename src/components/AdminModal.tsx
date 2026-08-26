@@ -16,6 +16,7 @@ import {
   Sparkles,
   CheckCircle,
   Eye,
+  EyeOff,
   Settings,
   HelpCircle,
   Smartphone,
@@ -254,6 +255,35 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       } else {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
+      }
+    } catch (e: any) {
+      setSaveError(e?.message || '저장 중 오류 발생');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTogglePublish = async (id: string) => {
+    const updatedProjects = draft.projects.map((p) => {
+      if (p.id === id) {
+        return {
+          ...p,
+          isPublished: p.isPublished === false ? true : false,
+        };
+      }
+      return p;
+    });
+    const newDraft = { ...draft, projects: updatedProjects };
+    setDraft(newDraft);
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const res = await onSaveContent(newDraft);
+      if (res && !res.success) {
+        setSaveError(res.error || '게시 상태 변경 저장 실패');
+      } else {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
       }
     } catch (e: any) {
       setSaveError(e?.message || '저장 중 오류 발생');
@@ -559,81 +589,121 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
                       {/* Project Table / Cards */}
                       <div className="space-y-3">
-                        {(draft.projects || []).map((proj, idx) => (
-                          <div
-                            key={proj.id}
-                            className="p-4 rounded-lg bg-[#222220] border border-[#333330] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                          >
-                            <div className="flex items-center gap-4">
-                              <img
-                                src={proj.coverImage || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=85'}
-                                alt={proj.title}
-                                className="w-16 h-12 rounded object-cover bg-[#333330] border border-[#444440]"
-                              />
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-xs font-bold text-amber-400">
-                                    {proj.number || String(idx + 1).padStart(2, '0')}
-                                  </span>
-                                  <h4 className="text-sm font-bold text-white">{proj.title || 'Untitled'}</h4>
-                                  {proj.featuredInHero && (
-                                    <span className="text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded font-mono">
-                                      HERO FEATURED
-                                    </span>
+                        {(draft.projects || []).map((proj, idx) => {
+                          const isPub = proj.isPublished !== false;
+                          return (
+                            <div
+                              key={proj.id}
+                              className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                                isPub 
+                                  ? 'bg-[#222220] border-[#333330]' 
+                                  : 'bg-[#1C1C1A] border-[#383834] border-dashed opacity-85'
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="relative">
+                                  <img
+                                    src={proj.coverImage || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=85'}
+                                    alt={proj.title}
+                                    className="w-16 h-12 rounded-lg object-cover bg-[#333330] border border-[#444440]"
+                                  />
+                                  {!isPub && (
+                                    <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center">
+                                      <EyeOff className="w-4 h-4 text-slate-300" />
+                                    </div>
                                   )}
                                 </div>
-                                <div className="text-xs text-[#888880] font-mono">
-                                  {proj.category || 'DETAIL PAGE'} · {proj.period || ''} · {(proj.sections || []).length} 섹션
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-mono text-xs font-bold text-amber-400">
+                                      {proj.number || String(idx + 1).padStart(2, '0')}
+                                    </span>
+                                    <h4 className="text-sm font-bold text-white">{proj.title || 'Untitled'}</h4>
+                                    {isPub ? (
+                                      <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800/60 px-2 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span>노출 중</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] bg-[#2A2A28] text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full font-mono font-semibold flex items-center gap-1">
+                                        <EyeOff className="w-2.5 h-2.5" />
+                                        <span>숨김 상태</span>
+                                      </span>
+                                    )}
+                                    {proj.featuredInHero && (
+                                      <span className="text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded font-mono">
+                                        HERO FEATURED
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-[#888880] font-mono">
+                                    {proj.category || 'DETAIL PAGE'} · {proj.period || ''} · {(proj.sections || []).length} 섹션
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Actions */}
-                            <div className="flex items-center gap-2 self-end sm:self-center">
-                              <button
-                                onClick={() => handleMoveProject(idx, 'up')}
-                                disabled={idx === 0}
-                                title="위로 이동"
-                                className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
-                              >
-                                <ArrowUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleMoveProject(idx, 'down')}
-                                disabled={idx === (draft.projects || []).length - 1}
-                                title="아래로 이동"
-                                className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
-                              >
-                                <ArrowDown className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setEditingProject(proj);
-                                  setIsCreatingNewProject(false);
-                                }}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#333330] hover:bg-[#40403C] text-xs text-white"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                                <span>상세 편집</span>
-                              </button>
-                              <button
-                                onClick={() => handleDuplicateProject(proj)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-xs text-amber-300 border border-[#3E3E3A]"
-                                title="이 프로젝트 복사하여 추가 (복제)"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>복제</span>
-                              </button>
-                              <button
-                                onClick={() => handleDeleteProject(proj.id)}
-                                className="p-1.5 rounded bg-red-900/40 hover:bg-red-900/70 text-red-300"
-                                title="삭제"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {/* Actions */}
+                              <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+                                {/* Direct Visibility Toggle Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePublish(proj.id)}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono transition-all border ${
+                                    isPub
+                                      ? 'bg-emerald-950/60 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/80'
+                                      : 'bg-[#2A2A28] border-[#444440] text-slate-400 hover:text-white hover:bg-[#343430]'
+                                  }`}
+                                  title={isPub ? "클릭하여 사이트에서 숨기기" : "클릭하여 사이트에 노출(게시)하기"}
+                                >
+                                  {isPub ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                  <span>{isPub ? '노출' : '숨김'}</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleMoveProject(idx, 'up')}
+                                  disabled={idx === 0}
+                                  title="위로 이동"
+                                  className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveProject(idx, 'down')}
+                                  disabled={idx === (draft.projects || []).length - 1}
+                                  title="아래로 이동"
+                                  className="p-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-[#A0A09A] disabled:opacity-30"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingProject(proj);
+                                    setIsCreatingNewProject(false);
+                                  }}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded bg-[#333330] hover:bg-[#40403C] text-xs text-white font-medium"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                  <span>상세 편집</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDuplicateProject(proj)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#2C2C28] hover:bg-[#383834] text-xs text-amber-300 border border-[#3E3E3A]"
+                                  title="이 프로젝트 복사하여 추가 (복제)"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>복제</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProject(proj.id)}
+                                  className="p-1.5 rounded bg-red-900/40 hover:bg-red-900/70 text-red-300"
+                                  title="삭제"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1160,6 +1230,65 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
             className="px-4 py-1.5 rounded bg-white text-xs font-bold text-[#141414] hover:bg-[#EAEAEA]"
           >
             완료
+          </button>
+        </div>
+      </div>
+
+      {/* Visibility / Publish Setting */}
+      <div className="p-4 rounded-xl bg-[#242422] border border-[#3A3A36] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold text-slate-200 flex items-center gap-1.5">
+              {form.isPublished !== false ? (
+                <Eye className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <EyeOff className="w-4 h-4 text-slate-400" />
+              )}
+              <span>웹사이트 게시 여부 (노출 / 숨김)</span>
+            </span>
+            {form.isPublished !== false ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>사이트에 정상 노출 중</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700 font-bold flex items-center gap-1">
+                <EyeOff className="w-3 h-3 text-slate-400" />
+                <span>숨김 (비공개 상태)</span>
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {form.isPublished !== false
+              ? '현재 포트폴리오 메인 화면 및 작품 갤러리에 모든 방문자에게 정상 노출됩니다.'
+              : '현재 숨김 상태입니다. 일반 방문자에게는 노출되지 않으며 관리자 모드에서만 확인하고 언제든 다시 노출할 수 있습니다.'}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-[#1C1C1A] p-1 rounded-lg border border-[#333330] shrink-0">
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, isPublished: true })}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold font-mono transition-all flex items-center gap-1.5 ${
+              form.isPublished !== false
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>노출 (공개)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, isPublished: false })}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold font-mono transition-all flex items-center gap-1.5 ${
+              form.isPublished === false
+                ? 'bg-slate-700 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            <span>숨김 (비공개)</span>
           </button>
         </div>
       </div>

@@ -274,9 +274,10 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
   const isVideo = (project.projectType === 'video-motion' || project.category.toUpperCase().includes('VIDEO')) && Boolean(project.videoUrl || project.videoKeyframes || (project.videoVariations && project.videoVariations.length > 0));
 
   // Find previous and next project for navigation
-  const currentIndex = allProjects.findIndex((p) => p.id === project.id);
-  const prevProject = allProjects[(currentIndex - 1 + allProjects.length) % allProjects.length];
-  const nextProject = allProjects[(currentIndex + 1) % allProjects.length];
+  const navProjects = allProjects.filter((p) => p.isPublished !== false || p.id === project.id);
+  const currentIndex = navProjects.findIndex((p) => p.id === project.id);
+  const prevProject = navProjects[(currentIndex - 1 + navProjects.length) % navProjects.length];
+  const nextProject = navProjects[(currentIndex + 1) % navProjects.length];
 
   return (
     <AnimatePresence>

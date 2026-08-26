@@ -3,20 +3,22 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Portfolio global content document (publicly accessible)
     match /portfolio_content/{docId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
     
-    // Portfolio individual projects collection (publicly accessible)
+    // Portfolio individual projects collection and subcollections (sections, chunks)
     match /portfolio_projects/{projectId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
+      
+      match /{subCollection=**} {
+        allow read, write: if true;
+      }
     }
     
     // Default fallback
     match /{document=**} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
   }
 }
+
