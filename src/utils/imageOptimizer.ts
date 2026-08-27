@@ -26,16 +26,15 @@ export async function optimizeImageFile(
         let width = img.width;
         let height = img.height;
 
-        // Detail Page Friendly Scaling:
-        // Detail page images are often very tall (e.g., width 860px, height 8000px).
-        // We constrain by width (maxWidth = 1920) rather than general maxDimension,
-        // so tall detail images will never be crushed into low-resolution strips!
+        // Strictly Never Upscale:
+        // Only scale down if the original image width exceeds maxWidth (1920px).
+        // If the original image is smaller (e.g. 720px, 860px, 1080px), preserve its exact native dimensions!
         if (width > maxWidth) {
           height = Math.round((height * maxWidth) / width);
           width = maxWidth;
         }
 
-        // Cap extreme canvas memory if height exceeds 16384px (browser canvas limits)
+        // Cap extreme canvas memory if height exceeds 16000px (browser canvas limits)
         if (height > 16000) {
           width = Math.round((width * 16000) / height);
           height = 16000;
