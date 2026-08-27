@@ -10,6 +10,12 @@ import {
   getDocs,
   onSnapshot 
 } from 'firebase/firestore';
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { SiteContent, Project } from '../types';
 
@@ -29,10 +35,192 @@ try {
 
 export const db = firestoreInstance;
 
+// 3. Initialize Firebase Cloud Storage
+export const storage = getStorage(app, firebaseConfig.storageBucket);
+
 const PORTFOLIO_DOC_PATH = 'portfolio_content';
 const PORTFOLIO_DOC_ID = 'live';
 const PORTFOLIO_META_DOC_ID = 'live_meta';
 const PROJECTS_COLLECTION = 'portfolio_projects';
+
+/**
+ * Convert a base64 dataUrl string to a binary Blob
+ */
+export function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    const parts = dataUrl.split(';base64,');
+    if (parts.length !== 2) return null;
+    const contentType = parts[0].split(':')[1] || 'image/jpeg';
+    const raw = window.atob(parts[1]);
+    const rawLength = raw.length;
+    const uInt8Array = new Uint8Array(rawLength);
+    for (let i = 0; i < rawLength; ++i) {
+      uInt8Array[i] = raw.charCodeAt(i);
+    }
+    return new Blob([uInt8Array], { type: contentType });
+  } catch (e) {
+    console.warn('dataUrlToBlob parsing error:', e);
+    return null;
+  }
+}
+
+/**
+ * Upload any File, Blob, or raw base64 data directly to Firebase Cloud Storage.
+ * Returns the permanent, blazing-fast HTTPS CDN URL.
+ */
+export async function uploadMediaToStorage(
+  fileOrBlobOrDataUrl: File | Blob | string, 
+  customFileName?: string,
+  folder: string = 'portfolio_media'
+): Promise<string> {
+  try {
+    let targetBlob: Blob;
+    let ext = 'jpg';
+    let mimeType = 'image/jpeg';
+
+    if (typeof fileOrBlobOrDataUrl === 'string') {
+      if (fileOrBlobOrDataUrl.startsWith('http://') || fileOrBlobOrDataUrl.startsWith('https://')) {
+        return fileOrBlobOrDataUrl; // Already a remote URL
+      }
+      const converted = dataUrlToBlob(fileOrBlobOrDataUrl);
+      if (!converted) {
+        throw new Error('올바르지 않은 이미지 데이터 형식입니다.');
+      }
+      targetBlob = converted;
+      mimeType = targetBlob.type;
+      ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
+    } else if (fileOrBlobOrDataUrl instanceof File) {
+      targetBlob = fileOrBlobOrDataUrl;
+      mimeType = fileOrBlobOrDataUrl.type;
+      const fileExt = fileOrBlobOrDataUrl.name.split('.').pop();
+      if (fileExt) ext = fileExt.toLowerCase();
+    } else {
+      targetBlob = fileOrBlobOrDataUrl;
+      mimeType = fileOrBlobOrDataUrl.type || 'image/jpeg';
+      ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
+    }
+
+    const cleanName = customFileName 
+      ? customFileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+      : `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+    
+    const fullPath = `${folder}/${cleanName}`;
+    const storageRef = ref(storage, fullPath);
+    
+    const snapshot = await uploadBytes(storageRef, targetBlob, {
+      contentType: mimeType || 'image/jpeg',
+    });
+    
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+    return downloadUrl;
+  } catch (error) {
+    console.error('[Firebase Storage] Upload error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Recursively find and migrate any large Base64 media in SiteContent to Firebase Storage URLs
+ */
+async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent> {
+  const cloned: SiteContent = JSON.parse(JSON.stringify(content));
+
+  // Projects
+  if (Array.isArray(cloned.projects)) {
+    for (let pIdx = 0; pIdx < cloned.projects.length; pIdx++) {
+      const proj = cloned.projects[pIdx];
+
+      // Cover image
+      if (proj.coverImage && proj.coverImage.startsWith('data:')) {
+        try {
+          proj.coverImage = await uploadMediaToStorage(proj.coverImage, `cover_${proj.id}_${Date.now()}`);
+        } catch (e) {
+          console.warn(`Cover upload fallback for ${proj.id}:`, e);
+        }
+      }
+
+      // Hero Mockup Image
+      if (proj.heroMockupImage && proj.heroMockupImage.startsWith('data:')) {
+        try {
+          proj.heroMockupImage = await uploadMediaToStorage(proj.heroMockupImage, `mockup_${proj.id}_${Date.now()}`);
+        } catch (e) {
+          console.warn(`Mockup upload fallback for ${proj.id}:`, e);
+        }
+      }
+
+      // Banner variations
+      if (Array.isArray(proj.bannerVariations)) {
+        for (let bIdx = 0; bIdx < proj.bannerVariations.length; bIdx++) {
+          const banner = proj.bannerVariations[bIdx];
+          if (banner.imageUrl && banner.imageUrl.startsWith('data:')) {
+            try {
+              banner.imageUrl = await uploadMediaToStorage(banner.imageUrl, `banner_${proj.id}_${bIdx}_${Date.now()}`);
+            } catch (e) {}
+          }
+        }
+      }
+
+      // SNS slides
+      if (Array.isArray(proj.snsSlides)) {
+        for (let sIdx = 0; sIdx < proj.snsSlides.length; sIdx++) {
+          const slide = proj.snsSlides[sIdx];
+          if (slide.imageUrl && slide.imageUrl.startsWith('data:')) {
+            try {
+              slide.imageUrl = await uploadMediaToStorage(slide.imageUrl, `sns_${proj.id}_${sIdx}_${Date.now()}`);
+            } catch (e) {}
+          }
+        }
+      }
+
+      // Video variations
+      if (Array.isArray(proj.videoVariations)) {
+        for (let vIdx = 0; vIdx < proj.videoVariations.length; vIdx++) {
+          const vVar = proj.videoVariations[vIdx];
+          if (vVar.videoUrl && vVar.videoUrl.startsWith('data:')) {
+            try {
+              vVar.videoUrl = await uploadMediaToStorage(vVar.videoUrl, `video_${proj.id}_${vIdx}_${Date.now()}`);
+            } catch (e) {}
+          }
+          if (vVar.coverImage && vVar.coverImage.startsWith('data:')) {
+            try {
+              vVar.coverImage = await uploadMediaToStorage(vVar.coverImage, `vcover_${proj.id}_${vIdx}_${Date.now()}`);
+            } catch (e) {}
+          }
+        }
+      }
+
+      // Sections
+      if (Array.isArray(proj.sections)) {
+        for (let sIdx = 0; sIdx < proj.sections.length; sIdx++) {
+          const sec = proj.sections[sIdx];
+
+          if (sec.imageUrl && sec.imageUrl.startsWith('data:')) {
+            try {
+              sec.imageUrl = await uploadMediaToStorage(sec.imageUrl, `sec_${proj.id}_${sIdx}_${Date.now()}`);
+            } catch (e) {
+              console.warn('Section imageUrl upload fallback:', e);
+            }
+          }
+
+          if (Array.isArray(sec.images)) {
+            for (let iIdx = 0; iIdx < sec.images.length; iIdx++) {
+              const img = sec.images[iIdx];
+              if (img && img.startsWith('data:')) {
+                try {
+                  sec.images[iIdx] = await uploadMediaToStorage(img, `slice_${proj.id}_${sIdx}_${iIdx}_${Date.now()}`);
+                } catch (e) {
+                  console.warn('Section slice image upload fallback:', e);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return cloned;
+}
 
 /**
  * Clean data for Firestore serialization (strip undefined, functions, non-serializable properties)
@@ -161,7 +349,15 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
   // Wrap in a promise with timeout to prevent infinite loading state
   const savePromise = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const cleanedContent = cleanForFirestore(content);
+      // 0. Auto-migrate any raw base64 data to Firebase Storage URLs first
+      let contentWithStorageUrls = content;
+      try {
+        contentWithStorageUrls = await autoMigrateBase64Media(content);
+      } catch (migrateErr) {
+        console.warn('[Firebase] autoMigrateBase64Media warning:', migrateErr);
+      }
+
+      const cleanedContent = cleanForFirestore(contentWithStorageUrls);
       const now = new Date().toISOString();
       const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
       const currentProjectIds = new Set(currentProjectList.map((p) => p.id));

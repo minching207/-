@@ -13,9 +13,11 @@ import {
   Layers, 
   Sparkles, 
   FileImage,
-  Film
+  Film,
+  Cloud
 } from 'lucide-react';
 import { optimizeImageFile } from '../utils/imageOptimizer';
+import { uploadMediaToStorage } from '../lib/firebase';
 
 interface MediaFileUploadProps {
   label?: string;
@@ -95,13 +97,21 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
     }
 
     try {
+      // 1. Primary path: Upload directly to Firebase Cloud Storage (Original Quality preserved!)
+      try {
+        const storageUrl = await uploadMediaToStorage(file);
+        onChange(storageUrl);
+        setIsProcessing(false);
+        return;
+      } catch (storageErr: any) {
+        console.warn('[Storage Upload Warning - Falling back to local dataUrl]:', storageErr);
+      }
+
+      // 2. Fallback path if Storage has temporary issue
       if (isImageFile) {
         const optimizedDataUrl = await optimizeImageFile(file, 1920, 0.88);
         onChange(optimizedDataUrl);
       } else if (isVideoFile) {
-        if (file.size > 25 * 1024 * 1024) {
-          setErrorMsg('영상 파일 크기가 25MB를 초과합니다. 25MB 이하를 권장합니다.');
-        }
         const reader = new FileReader();
         reader.onload = (e) => {
           const dataUrl = e.target?.result as string;
@@ -249,9 +259,9 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
 
                 {/* Processing Overlay */}
                 {isProcessing && (
-                  <div className="absolute inset-0 bg-black/75 flex items-center justify-center text-white text-xs gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
-                    <span>파일 변환 중...</span>
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white text-xs gap-2 z-20">
+                    <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
+                    <span className="font-mono text-amber-300">Firebase Storage 원본 고속 업로드 중...</span>
                   </div>
                 )}
               </div>
@@ -259,9 +269,15 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
               {/* Action Bar on Preview */}
               <div className="px-3.5 py-2.5 bg-[#252522] border-t border-[#333330] flex items-center justify-between">
                 <div className="flex items-center gap-2 overflow-hidden text-ellipsis">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${isGif ? 'bg-pink-400' : 'bg-emerald-400'}`}></span>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${isGif ? 'bg-pink-400' : value?.includes('firebasestorage.googleapis.com') ? 'bg-sky-400' : 'bg-emerald-400'}`}></span>
                   <span className="text-[11px] font-mono text-slate-300 truncate">
-                    {value?.startsWith('data:image/gif') ? '내 PC 업로드 애니메이션 GIF' : value?.startsWith('data:') ? '내 PC 업로드 파일' : value}
+                    {value?.includes('firebasestorage.googleapis.com')
+                      ? '⚡ Cloud Storage 원본 저장됨 (100% 무손실)'
+                      : value?.startsWith('data:image/gif')
+                      ? '내 PC 업로드 애니메이션 GIF'
+                      : value?.startsWith('data:')
+                      ? '내 PC 업로드 파일'
+                      : value}
                   </span>
                 </div>
 
@@ -391,6 +407,16 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
       }
 
       try {
+        // 1. Try direct upload to Firebase Cloud Storage
+        try {
+          const storageUrl = await uploadMediaToStorage(file);
+          newImages.push(storageUrl);
+          continue;
+        } catch (storageErr) {
+          console.warn('Storage slice upload warning, using local fallback:', storageErr);
+        }
+
+        // 2. Fallback to local optimized dataUrl
         const optimizedDataUrl = await optimizeImageFile(file, 1920, 0.88);
         newImages.push(optimizedDataUrl);
       } catch (err) {
@@ -410,9 +436,16 @@ export const MultiImageSliceUpload: React.FC<MultiImageSliceUploadProps> = ({
     if (replacingIndex === null) return;
     setIsProcessing(true);
     try {
-      const optimizedDataUrl = await optimizeImageFile(file, 1920, 0.88);
+      // 1. Try direct upload to Firebase Storage
+      let finalUrl = '';
+      try {
+        finalUrl = await uploadMediaToStorage(file);
+      } catch (storageErr) {
+        finalUrl = await optimizeImageFile(file, 1920, 0.88);
+      }
+
       const updated = [...images];
-      updated[replacingIndex] = optimizedDataUrl;
+      updated[replacingIndex] = finalUrl;
       onChange(updated);
     } catch (err) {
       console.error('Image replace error:', err);
