@@ -155,163 +155,179 @@ export async function getRemoteContent(): Promise<SiteContent | null> {
  * - Guarantees 0% chance of exceeding the 1MB Firestore document limit!
  * - Cleans up deleted projects & deleted sub-sections
  * - Updates metadata document (`live_meta`) LAST, ensuring real-time listeners receive complete data
+ * - Adds 10s timeout protection so that network hangs never cause infinite loading
  */
 export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
-  try {
-    const cleanedContent = cleanForFirestore(content);
-    const now = new Date().toISOString();
-    const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
-    const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
+  // Wrap in a promise with timeout to prevent infinite loading state
+  const savePromise = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const cleanedContent = cleanForFirestore(content);
+      const now = new Date().toISOString();
+      const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
+      const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
 
-    // 1. Save all individual project documents and their sections subcollections
-    const projectSavePromises = currentProjectList.map(async (proj: Project) => {
-      const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
-      
-      // Clean and prepare sections
-      const rawSections = proj.sections || [];
-      const currentSectionIds = new Set<string>();
+      // 1. Save all individual project documents and their sections subcollections
+      const projectSavePromises = currentProjectList.map(async (proj: Project) => {
+        const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
+        
+        // Clean and prepare sections
+        const rawSections = proj.sections || [];
+        const currentSectionIds = new Set<string>();
 
-      const sanitizedSections = rawSections.map((sec, sIdx) => {
-        const secId = sec.id || `sec-${sIdx + 1}`;
-        currentSectionIds.add(secId);
-        const rawImgs = Array.isArray(sec.images) ? sec.images.filter(Boolean) : (sec.imageUrl ? [sec.imageUrl] : []);
-        return {
-          id: secId,
-          order: sIdx,
-          title: sec.title || `0${sIdx + 1}. SECTION`,
-          caption: sec.caption || '',
-          imageUrl: rawImgs[0] || sec.imageUrl || '',
-          images: rawImgs,
-          layoutMode: sec.layoutMode || 'seamless',
+        const sanitizedSections = rawSections.map((sec, sIdx) => {
+          const secId = sec.id || `sec-${sIdx + 1}`;
+          currentSectionIds.add(secId);
+          const rawImgs = Array.isArray(sec.images) ? sec.images.filter(Boolean) : (sec.imageUrl ? [sec.imageUrl] : []);
+          return {
+            id: secId,
+            order: sIdx,
+            title: sec.title || `0${sIdx + 1}. SECTION`,
+            caption: sec.caption || '',
+            imageUrl: rawImgs[0] || sec.imageUrl || '',
+            images: rawImgs,
+            layoutMode: sec.layoutMode || 'seamless',
+          };
+        });
+
+        // Save each section into subcollection `portfolio_projects/{proj.id}/sections/{sec.id}`
+        const sectionSavePromises = sanitizedSections.map(async (sec) => {
+          const secRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sec.id);
+          return setDoc(secRef, {
+            ...sec,
+            updatedAt: now,
+          });
+        });
+
+        await Promise.all(sectionSavePromises);
+
+        // Clean up any deleted sections in this project's subcollection
+        try {
+          const sectionsCol = collection(db, PROJECTS_COLLECTION, proj.id, 'sections');
+          const existingSecSnap = await getDocs(sectionsCol);
+          const secDeletePromises: Promise<any>[] = [];
+          existingSecSnap.forEach((sDoc) => {
+            if (!currentSectionIds.has(sDoc.id)) {
+              secDeletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sDoc.id)));
+            }
+          });
+          if (secDeletePromises.length > 0) {
+            await Promise.all(secDeletePromises);
+          }
+        } catch (secCleanErr) {
+          console.warn(`[Firebase] Section cleanup notice for ${proj.id}:`, secCleanErr);
+        }
+
+        // Prepare project root document: keep lightweight section summaries in the main doc
+        // and full image data in the sections subcollection to keep main doc << 200KB
+        const lightweightSections = sanitizedSections.map((sec) => ({
+          id: sec.id,
+          order: sec.order,
+          title: sec.title,
+          caption: sec.caption,
+          imageUrl: sec.imageUrl ? (sec.imageUrl.length > 5000 ? sec.imageUrl.slice(0, 100) + '...' : sec.imageUrl) : '',
+          imageCount: sec.images.length,
+          layoutMode: sec.layoutMode,
+        }));
+
+        const sanitizedProject: Project = {
+          ...proj,
+          isPublished: proj.isPublished !== false,
+          sections: lightweightSections as any,
         };
-      });
 
-      // Save each section into subcollection `portfolio_projects/{proj.id}/sections/{sec.id}`
-      const sectionSavePromises = sanitizedSections.map(async (sec) => {
-        const secRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sec.id);
-        return setDoc(secRef, {
-          ...sec,
+        return setDoc(projRef, {
+          ...sanitizedProject,
           updatedAt: now,
         });
       });
 
-      await Promise.all(sectionSavePromises);
+      await Promise.all(projectSavePromises);
 
-      // Clean up any deleted sections in this project's subcollection
+      // 2. Clean up any deleted projects from the collection
       try {
-        const sectionsCol = collection(db, PROJECTS_COLLECTION, proj.id, 'sections');
-        const existingSecSnap = await getDocs(sectionsCol);
-        const secDeletePromises: Promise<any>[] = [];
-        existingSecSnap.forEach((sDoc) => {
-          if (!currentSectionIds.has(sDoc.id)) {
-            secDeletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sDoc.id)));
+        const projectsCol = collection(db, PROJECTS_COLLECTION);
+        const existingSnap = await getDocs(projectsCol);
+        const deletePromises: Promise<any>[] = [];
+        existingSnap.forEach((docItem) => {
+          if (!currentProjectIds.has(docItem.id)) {
+            deletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, docItem.id)));
           }
         });
-        if (secDeletePromises.length > 0) {
-          await Promise.all(secDeletePromises);
+        if (deletePromises.length > 0) {
+          await Promise.all(deletePromises);
         }
-      } catch (secCleanErr) {
-        console.warn(`[Firebase] Section cleanup notice for ${proj.id}:`, secCleanErr);
+      } catch (cleanupErr) {
+        console.warn('[Firebase] Project cleanup notice:', cleanupErr);
       }
 
-      // Prepare project root document: keep lightweight section summaries in the main doc
-      // and full image data in the sections subcollection to keep main doc << 200KB
-      const lightweightSections = sanitizedSections.map((sec) => ({
-        id: sec.id,
-        order: sec.order,
-        title: sec.title,
-        caption: sec.caption,
-        imageUrl: sec.imageUrl ? (sec.imageUrl.length > 5000 ? sec.imageUrl.slice(0, 100) + '...' : sec.imageUrl) : '',
-        imageCount: sec.images.length,
-        layoutMode: sec.layoutMode,
-      }));
-
-      const sanitizedProject: Project = {
-        ...proj,
-        isPublished: proj.isPublished !== false,
-        sections: lightweightSections as any,
-      };
-
-      return setDoc(projRef, {
-        ...sanitizedProject,
-        updatedAt: now,
-      });
-    });
-
-    await Promise.all(projectSavePromises);
-
-    // 2. Clean up any deleted projects from the collection
-    try {
-      const projectsCol = collection(db, PROJECTS_COLLECTION);
-      const existingSnap = await getDocs(projectsCol);
-      const deletePromises: Promise<any>[] = [];
-      existingSnap.forEach((docItem) => {
-        if (!currentProjectIds.has(docItem.id)) {
-          deletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, docItem.id)));
-        }
-      });
-      if (deletePromises.length > 0) {
-        await Promise.all(deletePromises);
-      }
-    } catch (cleanupErr) {
-      console.warn('[Firebase] Project cleanup notice:', cleanupErr);
-    }
-
-    // 3. Save metadata + project ordering LAST (This triggers onSnapshot AFTER projects are written!)
-    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
-    await setDoc(metaRef, {
-      meta: cleanedContent.meta,
-      hero: cleanedContent.hero,
-      approach: cleanedContent.approach,
-      about: cleanedContent.about,
-      contact: cleanedContent.contact,
-      projectOrder: currentProjectList.map((p: Project) => p.id),
-      updatedAt: now,
-    }, { merge: true });
-
-    // 4. Save lightweight sync beacon into live document for backwards compatibility
-    try {
-      const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-      const lightweightProjects = currentProjectList.map((p: Project) => ({
-        id: p.id,
-        number: p.number,
-        title: p.title,
-        category: p.category,
-        projectType: p.projectType,
-        summary: p.summary,
-        coverImage: p.coverImage,
-        tags: p.tags,
-        role: p.role,
-        period: p.period,
-        tools: p.tools,
-        client: p.client,
-        featuredInHero: p.featuredInHero,
-        isPublished: p.isPublished !== false,
-      }));
-
-      await setDoc(liveRef, {
+      // 3. Save metadata + project ordering LAST (This triggers onSnapshot AFTER projects are written!)
+      const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
+      await setDoc(metaRef, {
         meta: cleanedContent.meta,
         hero: cleanedContent.hero,
-        projectSummaries: lightweightProjects,
+        approach: cleanedContent.approach,
+        about: cleanedContent.about,
+        contact: cleanedContent.contact,
+        projectOrder: currentProjectList.map((p: Project) => p.id),
         updatedAt: now,
       }, { merge: true });
-    } catch (beaconErr) {
-      console.warn('[Firebase] Live sync beacon notice:', beaconErr);
-    }
 
-    console.log('[Firebase] Successfully saved modular portfolio content to Firestore with subcollections!');
-    return { success: true };
-  } catch (error: any) {
-    console.error('[Firebase] Save to Firestore failed:', error);
-    const rawMsg = error?.message || '';
-    let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
-    if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
-      errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
-    } else if (rawMsg) {
-      errMsg = `클라우드 저장 오류: ${rawMsg}`;
+      // 4. Save lightweight sync beacon into live document for backwards compatibility
+      try {
+        const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
+        const lightweightProjects = currentProjectList.map((p: Project) => ({
+          id: p.id,
+          number: p.number,
+          title: p.title,
+          category: p.category,
+          projectType: p.projectType,
+          summary: p.summary,
+          coverImage: p.coverImage,
+          tags: p.tags,
+          role: p.role,
+          period: p.period,
+          tools: p.tools,
+          client: p.client,
+          featuredInHero: p.featuredInHero,
+          isPublished: p.isPublished !== false,
+        }));
+
+        await setDoc(liveRef, {
+          meta: cleanedContent.meta,
+          hero: cleanedContent.hero,
+          projectSummaries: lightweightProjects,
+          updatedAt: now,
+        }, { merge: true });
+      } catch (beaconErr) {
+        console.warn('[Firebase] Live sync beacon notice:', beaconErr);
+      }
+
+      console.log('[Firebase] Successfully saved modular portfolio content to Firestore with subcollections!');
+      return { success: true };
+    } catch (error: any) {
+      console.error('[Firebase] Save to Firestore failed:', error);
+      const rawMsg = error?.message || '';
+      let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
+      if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
+        errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
+      } else if (rawMsg) {
+        errMsg = `클라우드 저장 오류: ${rawMsg}`;
+      }
+      return { success: false, error: errMsg };
     }
-    return { success: false, error: errMsg };
-  }
+  };
+
+  // Timeout promise (12 seconds)
+  const timeoutPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
+    setTimeout(() => {
+      resolve({ 
+        success: false, 
+        error: '클라우드 네트워크 응답 시간이 초과되었습니다. 브라우저 로컬(IndexedDB)에는 안전하게 저장되었습니다.' 
+      });
+    }, 12000);
+  });
+
+  return Promise.race([savePromise(), timeoutPromise]);
 }
 
 /**

@@ -1,8 +1,12 @@
 /**
  * High-performance browser-side image optimization
- * Resizes large images to display-ready resolutions and compresses to lightweight WebP/JPEG
+ * Resizes large images to display-ready resolutions while preserving ultra-crisp detail for long detail pages
  */
-export async function optimizeImageFile(file: File, maxDimension = 1200, quality = 0.78): Promise<string> {
+export async function optimizeImageFile(
+  file: File, 
+  maxWidth = 1920, 
+  quality = 0.88
+): Promise<string> {
   const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
   const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
 
@@ -11,7 +15,7 @@ export async function optimizeImageFile(file: File, maxDimension = 1200, quality
     reader.onload = (e) => {
       const rawDataUrl = e.target?.result as string;
 
-      // Preserve SVGs and Animated GIFs without canvas compression
+      // Preserve SVGs and Animated GIFs without canvas re-compression
       if (isGif || isSvg) {
         resolve(rawDataUrl);
         return;
@@ -22,15 +26,19 @@ export async function optimizeImageFile(file: File, maxDimension = 1200, quality
         let width = img.width;
         let height = img.height;
 
-        // Calculate proportional scaling
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
+        // Detail Page Friendly Scaling:
+        // Detail page images are often very tall (e.g., width 860px, height 8000px).
+        // We constrain by width (maxWidth = 1920) rather than general maxDimension,
+        // so tall detail images will never be crushed into low-resolution strips!
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        // Cap extreme canvas memory if height exceeds 16384px (browser canvas limits)
+        if (height > 16000) {
+          width = Math.round((width * 16000) / height);
+          height = 16000;
         }
 
         const canvas = document.createElement('canvas');
@@ -43,28 +51,21 @@ export async function optimizeImageFile(file: File, maxDimension = 1200, quality
           return;
         }
 
-        // High quality image smoothing
+        // High quality image smoothing for crisp text and typography
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Try WebP first for optimal compression
+        // Try WebP first for optimal clarity and small payload
         try {
-          let outData = canvas.toDataURL('image/webp', quality);
-          // If still large (>280KB) and canvas is large, downscale slightly for safety
-          if (outData.length > 380000) {
-            outData = canvas.toDataURL('image/webp', quality * 0.85);
-          }
-          if (outData.startsWith('data:image/webp')) {
+          const outData = canvas.toDataURL('image/webp', quality);
+          if (outData.startsWith('data:image/webp') && outData.length > 100) {
             resolve(outData);
             return;
           }
         } catch (e) {}
 
-        let jpegData = canvas.toDataURL('image/jpeg', quality);
-        if (jpegData.length > 380000) {
-          jpegData = canvas.toDataURL('image/jpeg', quality * 0.85);
-        }
+        const jpegData = canvas.toDataURL('image/jpeg', quality);
         resolve(jpegData);
       };
 
@@ -83,12 +84,16 @@ export async function optimizeImageFile(file: File, maxDimension = 1200, quality
 /**
  * Optimizes an existing base64 dataUrl if it's overly large
  */
-export async function optimizeDataUrl(dataUrl: string, maxDimension = 1200, quality = 0.78): Promise<string> {
+export async function optimizeDataUrl(
+  dataUrl: string, 
+  maxWidth = 1920, 
+  quality = 0.88
+): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:image/') || dataUrl.startsWith('data:image/gif') || dataUrl.startsWith('data:image/svg')) {
     return dataUrl;
   }
-  // If dataUrl is small enough (< 150KB), return as is
-  if (dataUrl.length < 200000) {
+  // If dataUrl is already modest in size (< 350KB), return as is
+  if (dataUrl.length < 350000) {
     return dataUrl;
   }
 
@@ -98,14 +103,14 @@ export async function optimizeDataUrl(dataUrl: string, maxDimension = 1200, qual
       let width = img.width;
       let height = img.height;
 
-      if (width > maxDimension || height > maxDimension) {
-        if (width > height) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      if (height > 16000) {
+        width = Math.round((width * 16000) / height);
+        height = 16000;
       }
 
       const canvas = document.createElement('canvas');

@@ -99,7 +99,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
     }
     if (cat.includes('SNS') || type === 'sns-content') {
       return {
-        label: 'SNS 콘텐츠 · CARD NEWS',
+        label: 'SNS 콘텐츠 · SNS',
         icon: Instagram,
         colorClass: 'bg-rose-50 text-rose-700 border-rose-200',
       };

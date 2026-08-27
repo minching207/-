@@ -170,59 +170,36 @@ export const Hero: React.FC<HeroProps> = ({ content, onSelectProject }) => {
               </div>
             </div>
 
-            {/* Editorial Mosaic Composition Grid */}
-            <div className="grid grid-cols-12 gap-3.5 relative rounded-2xl overflow-hidden">
-              {/* Main Product / Detail Section Hero */}
-              <div className="col-span-8 relative aspect-[4/5] rounded-xl overflow-hidden bg-slate-900">
-                <img
-                  src={featuredProject?.coverImage || 'https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?auto=format&fit=crop&w=1200&q=85'}
-                  alt={featuredProject?.title || 'Featured Work'}
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1200&q=85';
-                  }}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-108"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/90 via-[#0F172A]/20 to-transparent flex flex-col justify-end p-4 sm:p-5 text-white">
-                  <span className="text-[10px] uppercase font-mono tracking-widest text-[#FBCFE8] font-bold">
+            {/* Main Featured Project Showcase Image Frame */}
+            <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[16/10] sm:aspect-[16/9] border border-slate-100">
+              <img
+                src={featuredProject?.coverImage || 'https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?auto=format&fit=crop&w=1200&q=85'}
+                alt={featuredProject?.title || 'Featured Work'}
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1200&q=85';
+                }}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/90 via-[#0F172A]/25 to-transparent flex flex-col justify-end p-5 sm:p-6 text-white">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="text-[10px] uppercase font-mono tracking-widest px-2.5 py-0.5 rounded-full bg-[#EC4899] text-white font-bold">
                     {featuredProject?.category}
                   </span>
-                  <p className="text-sm sm:text-base font-bold leading-snug tracking-tight mt-1 group-hover:text-[#FBCFE8] transition-colors">
-                    {featuredProject?.title}
-                  </p>
-                </div>
-              </div>
-
-              {/* Right Side Micro Highlights */}
-              <div className="col-span-4 flex flex-col gap-3.5">
-                {/* Texture Shot */}
-                <div className="aspect-[4/3] rounded-xl overflow-hidden bg-slate-100 relative border border-slate-200">
-                  <img
-                    src="https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80"
-                    alt="Texture Detail"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute top-2 right-2 bg-slate-900 text-white text-[9px] font-mono px-2 py-0.5 rounded-full font-bold shadow-xs">
-                    TEXTURE
-                  </div>
-                </div>
-
-                {/* Structure / Strategy Badge */}
-                <div className="flex-1 rounded-xl bg-[#F8FAFC] p-3.5 border border-slate-200 flex flex-col justify-between text-slate-800 shadow-2xs">
-                  <div className="space-y-1">
-                    <span className="text-[9px] font-mono text-[#EC4899] tracking-wider block font-bold">
-                      STRATEGY
+                  {featuredProject?.client && (
+                    <span className="text-[10px] font-mono text-slate-300 bg-black/40 px-2 py-0.5 rounded-full backdrop-blur-xs">
+                      {featuredProject.client}
                     </span>
-                    <p className="text-[11px] font-bold leading-tight text-[#0F172A]">
-                      Hook → Visual → Solution
-                    </p>
-                  </div>
-                  <div className="pt-2 flex items-center justify-between text-[10px] text-[#EC4899] font-bold">
-                    <span>VIEW STORY</span>
-                    <ArrowDown className="w-3 h-3 -rotate-90 group-hover:translate-x-1 transition-transform" />
-                  </div>
+                  )}
                 </div>
+                <p className="text-base sm:text-xl font-bold leading-snug tracking-tight group-hover:text-[#FBCFE8] transition-colors">
+                  {featuredProject?.title}
+                </p>
+                {featuredProject?.summary && (
+                  <p className="text-xs text-slate-300 line-clamp-1 mt-1 font-normal max-w-xl">
+                    {featuredProject.summary}
+                  </p>
+                )}
               </div>
             </div>
 

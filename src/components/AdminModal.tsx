@@ -327,11 +327,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     <div 
       id="admin-modal-overlay"
       className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
     >
       {!isAdmin ? (
         /* Password Authentication Screen - Compact, Centered, High Contrast Dialog */
