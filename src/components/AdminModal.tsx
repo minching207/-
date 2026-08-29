@@ -1808,11 +1808,22 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
                 <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
               </label>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                상세 모달에 노출되는 구간별 타임스탬프(00:00~), 씬 제목, 모션 그래픽 연출 설명을 자유롭게 편집합니다.
+                상세 모달에 노출되는 구간별 타임스탬프, 씬 제목, 모션 설명을 편집합니다. <span className="text-pink-400 font-medium">※ 씬을 작성하지 않으면 상세 모달에서 해당 섹션이 자동으로 숨겨집니다.</span>
               </p>
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
+              {form.videoKeyframes && form.videoKeyframes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, videoKeyframes: [] })}
+                  className="px-2 py-1 rounded text-[10px] font-mono bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 border border-rose-800/50 flex items-center gap-1"
+                  title="모든 씬을 삭제하고 상세 모달에서 스토리보드 섹션을 숨깁니다"
+                >
+                  <Trash2 className="w-3 h-3" /> 전체 비우기 (숨김)
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -1839,7 +1850,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
                 }}
                 className="px-2.5 py-1 rounded text-[10px] font-mono bg-[#333330] text-pink-300 hover:text-white border border-[#444440]"
               >
-                ✨ 기본 3단계 씬 프리셋
+                ✨ 3단계 프리셋
               </button>
 
               <button
@@ -1917,7 +1928,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
           ) : (
             <div className="p-4 rounded-xl bg-[#1C1C1A] border border-dashed border-[#3A3A36] text-center space-y-2">
               <p className="text-xs text-slate-400">
-                등록된 스토리보드 씬이 없습니다. 기본 3단계 씬을 불러오거나 직접 추가해보세요.
+                등록된 스토리보드 씬이 없습니다. <span className="text-pink-400 font-semibold">(상세 모달에 스토리보드 섹션이 표시되지 않습니다)</span>
               </p>
               <button
                 type="button"

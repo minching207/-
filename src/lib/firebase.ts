@@ -217,12 +217,12 @@ async function optimizeAllMedia(content: SiteContent): Promise<SiteContent> {
 
   const tasks: MediaTask[] = [];
 
-  // Hero mockup
-  if (cloned.hero?.heroImage && cloned.hero.heroImage.startsWith('data:')) {
+  // About resume
+  if (cloned.about?.resumeUrl && cloned.about.resumeUrl.startsWith('data:')) {
     tasks.push({
-      get: () => cloned.hero?.heroImage,
-      set: (url) => { if (cloned.hero) cloned.hero.heroImage = url; },
-      tag: `hero_main_${Date.now()}`
+      get: () => cloned.about?.resumeUrl,
+      set: (url) => { if (cloned.about) cloned.about.resumeUrl = url; },
+      tag: `resume_${Date.now()}`
     });
   }
 

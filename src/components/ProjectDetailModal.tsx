@@ -21,10 +21,15 @@ import {
   Square,
   Volume2,
   VolumeX,
-  Maximize2
+  Maximize2,
+  Eye,
+  EyeOff,
+  Minimize2,
+  Scan
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project, VideoVariation } from '../types';
+import { isVideoMedia } from './MediaFileUpload';
 
 interface ProjectDetailModalProps {
   project: Project | null;
@@ -266,6 +271,8 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
   // Video player state & variations
   const [activeVideoVarIndex, setActiveVideoVarIndex] = useState<number>(0);
   const [isVideoMuted, setIsVideoMuted] = useState<boolean>(true);
+  const [showReelsOverlay, setShowReelsOverlay] = useState<boolean>(true);
+  const [videoFitMode, setVideoFitMode] = useState<'contain' | 'cover'>('contain');
 
   if (!project) return null;
 
@@ -683,6 +690,12 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
               const isSquare = currentVar.type === '1:1';
               const hasMultiSizes = variations.length > 1;
 
+              // Only display Storyboard Keyframes if explicitly provided and not empty
+              const validKeyframes = (project.videoKeyframes || []).filter(
+                (frame) => (frame.title && frame.title.trim().length > 0) || (frame.description && frame.description.trim().length > 0)
+              );
+              const hasKeyframes = validKeyframes.length > 0;
+
               return (
                 <div className="space-y-8">
                   {/* Section Title Bar with Format Switcher / Tag */}
@@ -760,22 +773,30 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                   <div className="bg-[#F8FAFC] p-6 sm:p-10 rounded-3xl border border-slate-200">
                     {/* CASE 1: 9:16 Mobile Shortform Smartphone Mockup */}
                     {isShortform && (
-                      <div className="flex flex-col lg:flex-row gap-8 items-center justify-center">
-                        {/* Smartphone outer shell */}
-                        <div className="w-[300px] sm:w-[320px] h-[580px] sm:h-[620px] bg-slate-900 rounded-[40px] sm:rounded-[44px] p-2.5 shadow-2xl border border-slate-700/50 flex-shrink-0 flex flex-col relative overflow-hidden [transform:translateZ(0)] isolate">
-                          {/* Inner Screen */}
-                          <div className="w-full h-full bg-slate-950 rounded-[30px] sm:rounded-[34px] overflow-hidden relative flex flex-col justify-between [transform:translateZ(0)] isolate">
-                            {/* Top status */}
-                            <div className="z-10 px-5 pt-3 pb-2 flex items-center justify-between text-[10px] text-white font-mono bg-gradient-to-b from-black/70 to-transparent shrink-0">
-                              <span>09:41</span>
-                              <span className="text-pink-400 font-bold flex items-center gap-1">
-                                <Smartphone className="w-3 h-3" />
-                                <span>REELS / SHORTS</span>
-                              </span>
-                            </div>
+                      <div className={`flex flex-col ${hasKeyframes ? 'lg:flex-row gap-8' : 'gap-6'} items-center justify-center`}>
+                        {/* Smartphone outer shell with authentic phone curves */}
+                        <div className="w-[290px] sm:w-[325px] md:w-[340px] bg-slate-900 rounded-[46px] sm:rounded-[52px] p-2.5 sm:p-3 shadow-2xl border-[3px] border-slate-700/80 flex-shrink-0 flex flex-col relative overflow-hidden [transform:translateZ(0)] isolate">
+                          {/* Top Speaker notch / Dynamic Island bar */}
+                          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-full z-30 flex items-center justify-center pointer-events-none">
+                            <div className="w-2.5 h-2.5 rounded-full bg-slate-800/80 mr-2" />
+                            <div className="w-2 h-2 rounded-full bg-[#0F172A]" />
+                          </div>
 
-                            {/* Video Player / Media */}
-                            <div className="absolute inset-0 z-0">
+                          {/* Inner Screen with True 9:16 Aspect Ratio (1080 x 1920) */}
+                          <div className="w-full aspect-[9/16] bg-black rounded-[36px] sm:rounded-[42px] overflow-hidden relative flex flex-col justify-between [transform:translateZ(0)] isolate select-none">
+                            {/* Top status bar */}
+                            {showReelsOverlay && (
+                              <div className="z-10 px-5 pt-3.5 pb-2 flex items-center justify-between text-[10px] text-white font-mono bg-gradient-to-b from-black/75 to-transparent shrink-0">
+                                <span>09:41</span>
+                                <span className="text-pink-400 font-bold flex items-center gap-1">
+                                  <Smartphone className="w-3 h-3" />
+                                  <span>REELS / 9:16</span>
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Video Player / Media - 100% 9:16 Frame without left/right clipping */}
+                            <div className="absolute inset-0 z-0 bg-black flex items-center justify-center">
                               {currentVar.videoUrl || project.videoUrl ? (
                                 <video
                                   src={currentVar.videoUrl || project.videoUrl}
@@ -783,84 +804,117 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                                   loop
                                   muted={isVideoMuted}
                                   playsInline
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full ${videoFitMode === 'contain' ? 'object-contain' : 'object-cover'} bg-black`}
                                 />
                               ) : (
                                 <img
                                   src={currentVar.coverImage || project.coverImage}
                                   alt={project.title}
                                   referrerPolicy="no-referrer"
-                                  className="w-full h-full object-cover"
+                                  className={`w-full h-full ${videoFitMode === 'contain' ? 'object-contain' : 'object-cover'} bg-black`}
                                 />
                               )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/30 pointer-events-none" />
+                              {showReelsOverlay && (
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20 pointer-events-none" />
+                              )}
                             </div>
 
-                            {/* Sound toggle button */}
-                            <button
-                              onClick={() => setIsVideoMuted(!isVideoMuted)}
-                              className="absolute top-12 right-4 z-20 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors backdrop-blur-sm"
-                              title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
-                            >
-                              {isVideoMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-300" /> : <Volume2 className="w-3.5 h-3.5 text-pink-400" />}
-                            </button>
+                            {/* Floating Mockup Control Buttons */}
+                            <div className="absolute top-12 right-3 z-20 flex flex-col gap-1.5">
+                              {/* Sound toggle button */}
+                              <button
+                                type="button"
+                                onClick={() => setIsVideoMuted(!isVideoMuted)}
+                                className="p-2 rounded-full bg-black/70 text-white hover:bg-black/90 transition-all backdrop-blur-sm border border-white/10 hover:scale-105 shadow-md"
+                                title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
+                              >
+                                {isVideoMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-300" /> : <Volume2 className="w-3.5 h-3.5 text-pink-400" />}
+                              </button>
+
+                              {/* Lightbox full-size video expansion */}
+                              <button
+                                type="button"
+                                onClick={() => setZoomImage(currentVar.videoUrl || project.videoUrl || currentVar.coverImage || project.coverImage || null)}
+                                className="p-2 rounded-full bg-black/70 text-white hover:bg-black/90 transition-all backdrop-blur-sm border border-white/10 hover:scale-105 shadow-md"
+                                title="전체화면 확대 보기"
+                              >
+                                <Maximize2 className="w-3.5 h-3.5 text-slate-300 hover:text-white" />
+                              </button>
+
+                              {/* Reels UI Overlay toggle */}
+                              <button
+                                type="button"
+                                onClick={() => setShowReelsOverlay(!showReelsOverlay)}
+                                className="p-2 rounded-full bg-black/70 text-white hover:bg-black/90 transition-all backdrop-blur-sm border border-white/10 hover:scale-105 shadow-md"
+                                title={showReelsOverlay ? "목업 UI 숨기기 (원작 영상만 보기)" : "목업 UI 표시"}
+                              >
+                                {showReelsOverlay ? <EyeOff className="w-3.5 h-3.5 text-slate-300" /> : <Eye className="w-3.5 h-3.5 text-pink-400" />}
+                              </button>
+
+                              {/* Fit Mode Toggle */}
+                              <button
+                                type="button"
+                                onClick={() => setVideoFitMode(videoFitMode === 'contain' ? 'cover' : 'contain')}
+                                className="p-2 rounded-full bg-black/70 text-white hover:bg-black/90 transition-all backdrop-blur-sm border border-white/10 hover:scale-105 shadow-md"
+                                title={videoFitMode === 'contain' ? "100% 원본 비율 (좌우 잘림 방지 모드) - 꽉 채우기로 전환" : "화면 꽉 채움 모드 - 100% 원본 비율로 전환"}
+                              >
+                                <Scan className={`w-3.5 h-3.5 ${videoFitMode === 'contain' ? 'text-pink-400' : 'text-slate-300'}`} />
+                              </button>
+                            </div>
 
                             {/* Bottom Reel Caption Simulation */}
-                            <div className="z-10 p-5 space-y-2 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white shrink-0">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center text-[10px] font-bold">
-                                  LM
+                            {showReelsOverlay && (
+                              <div className="z-10 p-4 sm:p-5 space-y-2 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white shrink-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center text-[10px] font-bold">
+                                    LM
+                                  </div>
+                                  <span className="text-xs font-bold">lumiere_official</span>
                                 </div>
-                                <span className="text-xs font-bold">lumiere_official</span>
+                                <p className="text-[11px] text-slate-200 line-clamp-2 leading-relaxed">
+                                  {project.summary}
+                                </p>
+                                <div className="flex items-center gap-2 text-[10px] font-mono text-pink-300">
+                                  <Sparkles className="w-3 h-3" />
+                                  <span>After Effects Motion Graphic · Sound Sync</span>
+                                </div>
                               </div>
-                              <p className="text-[11px] text-slate-200 line-clamp-2 leading-relaxed">
-                                {project.summary}
-                              </p>
-                              <div className="flex items-center gap-2 text-[10px] font-mono text-pink-300">
-                                <Sparkles className="w-3 h-3" />
-                                <span>After Effects Motion Graphic · Sound Sync</span>
-                              </div>
+                            )}
+                          </div>
+
+                          {/* Sizing Label */}
+                          <div className="mt-2 text-center text-[10px] font-mono text-slate-400">
+                            <span>1080 x 1920 px · 9:16 Shortform Format</span>
+                          </div>
+                        </div>
+
+                        {/* Storyboard Keyframes Breakdown - Only shown if written in admin */}
+                        {hasKeyframes && (
+                          <div className="flex-1 space-y-4 w-full">
+                            <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-[#EC4899]" />
+                              <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
+                            </h3>
+
+                            <div className="space-y-3">
+                              {validKeyframes.map((frame, fIdx) => (
+                                <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                                  <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="font-bold text-[#0F172A]">{frame.title}</span>
+                                    {frame.timestamp && (
+                                      <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                                    )}
+                                  </div>
+                                  {frame.description && (
+                                    <p className="text-xs text-slate-600 leading-relaxed pt-0.5">
+                                      {frame.description}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        </div>
-
-                        {/* Storyboard Keyframes Breakdown */}
-                        <div className="flex-1 space-y-4 w-full">
-                          <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
-                            <Layers className="w-4 h-4 text-[#EC4899]" />
-                            <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
-                          </h3>
-
-                          <div className="space-y-3">
-                            {(project.videoKeyframes || [
-                              {
-                                timestamp: "00:00 - 00:03",
-                                title: "01. INTRO HOOK (유리알 광택 클로즈업)",
-                                description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
-                              },
-                              {
-                                timestamp: "00:04 - 00:09",
-                                title: "02. USP SHADE TRANSITION (색상 스위칭)",
-                                description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
-                              },
-                              {
-                                timestamp: "00:10 - 00:15",
-                                title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
-                                description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
-                              }
-                            ]).map((frame, fIdx) => (
-                              <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                                <div className="flex items-center justify-between text-xs font-mono">
-                                  <span className="font-bold text-[#0F172A]">{frame.title}</span>
-                                  <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
-                                </div>
-                                <p className="text-xs text-slate-600 leading-relaxed">
-                                  {frame.description}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -907,14 +961,23 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                               />
                             )}
 
-                            {/* Sound toggle button */}
-                            <button
-                              onClick={() => setIsVideoMuted(!isVideoMuted)}
-                              className="absolute top-4 right-4 z-20 p-2.5 rounded-full bg-black/70 text-white hover:bg-black/90 transition-colors backdrop-blur-sm border border-white/20"
-                              title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
-                            >
-                              {isVideoMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-pink-400" />}
-                            </button>
+                            {/* Controls */}
+                            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+                              <button
+                                onClick={() => setZoomImage(currentVar.videoUrl || project.videoUrl || currentVar.coverImage || project.coverImage || null)}
+                                className="p-2.5 rounded-full bg-black/70 text-white hover:bg-black/90 transition-all backdrop-blur-sm border border-white/20 hover:scale-105"
+                                title="전체화면 확대 보기"
+                              >
+                                <Maximize2 className="w-4 h-4 text-slate-300 hover:text-white" />
+                              </button>
+                              <button
+                                onClick={() => setIsVideoMuted(!isVideoMuted)}
+                                className="p-2.5 rounded-full bg-black/70 text-white hover:bg-black/90 transition-all backdrop-blur-sm border border-white/20 hover:scale-105"
+                                title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
+                              >
+                                {isVideoMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-pink-400" />}
+                              </button>
+                            </div>
                           </div>
 
                           {/* Cinema Footer Controls Simulation */}
@@ -930,43 +993,33 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Storyboard Keyframes for PC Wide */}
-                        <div className="space-y-4 pt-2">
-                          <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
-                            <Layers className="w-4 h-4 text-[#EC4899]" />
-                            <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
-                          </h3>
+                        {/* Storyboard Keyframes for PC Wide - Only shown if written in admin */}
+                        {hasKeyframes && (
+                          <div className="space-y-4 pt-2">
+                            <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-[#EC4899]" />
+                              <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
+                            </h3>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                            {(project.videoKeyframes || [
-                              {
-                                timestamp: "00:00 - 00:03",
-                                title: "01. INTRO HOOK (유리알 광택 클로즈업)",
-                                description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
-                              },
-                              {
-                                timestamp: "00:04 - 00:09",
-                                title: "02. USP SHADE TRANSITION (색상 스위칭)",
-                                description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
-                              },
-                              {
-                                timestamp: "00:10 - 00:15",
-                                title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
-                                description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
-                              }
-                            ]).map((frame, fIdx) => (
-                              <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 flex flex-col justify-between">
-                                <div className="flex items-center justify-between text-xs font-mono">
-                                  <span className="font-bold text-[#0F172A]">{frame.title}</span>
-                                  <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                              {validKeyframes.map((frame, fIdx) => (
+                                <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 flex flex-col justify-between">
+                                  <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="font-bold text-[#0F172A]">{frame.title}</span>
+                                    {frame.timestamp && (
+                                      <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                                    )}
+                                  </div>
+                                  {frame.description && (
+                                    <p className="text-xs text-slate-600 leading-relaxed pt-1">
+                                      {frame.description}
+                                    </p>
+                                  )}
                                 </div>
-                                <p className="text-xs text-slate-600 leading-relaxed pt-1">
-                                  {frame.description}
-                                </p>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -1012,13 +1065,23 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                               />
                             )}
 
-                            {/* Sound toggle button */}
-                            <button
-                              onClick={() => setIsVideoMuted(!isVideoMuted)}
-                              className="absolute top-3 right-3 z-20 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors backdrop-blur-sm"
-                            >
-                              {isVideoMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-300" /> : <Volume2 className="w-3.5 h-3.5 text-pink-400" />}
-                            </button>
+                            {/* Controls */}
+                            <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+                              <button
+                                onClick={() => setZoomImage(currentVar.videoUrl || project.videoUrl || currentVar.coverImage || project.coverImage || null)}
+                                className="p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all backdrop-blur-sm border border-white/20 hover:scale-105"
+                                title="전체화면 확대 보기"
+                              >
+                                <Maximize2 className="w-3.5 h-3.5 text-slate-300 hover:text-white" />
+                              </button>
+                              <button
+                                onClick={() => setIsVideoMuted(!isVideoMuted)}
+                                className="p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all backdrop-blur-sm border border-white/20 hover:scale-105"
+                                title={isVideoMuted ? "소리 켜기" : "소리 끄기"}
+                              >
+                                {isVideoMuted ? <VolumeX className="w-3.5 h-3.5 text-slate-300" /> : <Volume2 className="w-3.5 h-3.5 text-pink-400" />}
+                              </button>
+                            </div>
                           </div>
 
                           {/* Social Actions & Caption */}
@@ -1036,43 +1099,33 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Storyboard Keyframes for Square */}
-                        <div className="w-full space-y-4 pt-2">
-                          <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
-                            <Layers className="w-4 h-4 text-[#EC4899]" />
-                            <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
-                          </h3>
+                        {/* Storyboard Keyframes for Square - Only shown if written in admin */}
+                        {hasKeyframes && (
+                          <div className="w-full space-y-4 pt-2">
+                            <h3 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-[#EC4899]" />
+                              <span>타임라인 & 스토리보드 씬 구성 (Timeline & Storyboard)</span>
+                            </h3>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                            {(project.videoKeyframes || [
-                              {
-                                timestamp: "00:00 - 00:03",
-                                title: "01. INTRO HOOK (유리알 광택 클로즈업)",
-                                description: "화면 가득 차오르는 촉촉한 제형감과 빛 반사 모션으로 1초 만에 시선 고정"
-                              },
-                              {
-                                timestamp: "00:04 - 00:09",
-                                title: "02. USP SHADE TRANSITION (색상 스위칭)",
-                                description: "시그니처 컬러 쉐이드가 빠르게 교차되는 다이내믹 타이포그래피 모션"
-                              },
-                              {
-                                timestamp: "00:10 - 00:15",
-                                title: "03. OUTRO & CTA (올리브영 단독 특가 안내)",
-                                description: "‘지금 바로 터치’ 인터랙션 모션과 단독 런칭 특가 자막 애니메이션"
-                              }
-                            ]).map((frame, fIdx) => (
-                              <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 flex flex-col justify-between">
-                                <div className="flex items-center justify-between text-xs font-mono">
-                                  <span className="font-bold text-[#0F172A]">{frame.title}</span>
-                                  <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                              {validKeyframes.map((frame, fIdx) => (
+                                <div key={fIdx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 flex flex-col justify-between">
+                                  <div className="flex items-center justify-between text-xs font-mono">
+                                    <span className="font-bold text-[#0F172A]">{frame.title}</span>
+                                    {frame.timestamp && (
+                                      <span className="text-pink-600 font-bold bg-pink-50 px-2 py-0.5 rounded">{frame.timestamp}</span>
+                                    )}
+                                  </div>
+                                  {frame.description && (
+                                    <p className="text-xs text-slate-600 leading-relaxed pt-1">
+                                      {frame.description}
+                                    </p>
+                                  )}
                                 </div>
-                                <p className="text-xs text-slate-600 leading-relaxed pt-1">
-                                  {frame.description}
-                                </p>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1360,7 +1413,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           </div>
         </motion.div>
 
-        {/* Full Image Zoom Lightbox Overlay */}
+        {/* Full Image / Video Zoom Lightbox Overlay */}
         {zoomImage && (
           <div
             className="fixed inset-0 z-60 bg-black/95 backdrop-blur-lg flex items-center justify-center p-4 sm:p-10 cursor-zoom-out"
@@ -1368,17 +1421,31 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
           >
             <button
               onClick={() => setZoomImage(null)}
-              className="absolute top-6 right-6 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+              className="absolute top-6 right-6 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              aria-label="닫기"
             >
               <X className="w-6 h-6" />
             </button>
-            <div className="max-w-5xl max-h-[90vh] overflow-auto rounded-xl">
-              <img
-                src={zoomImage}
-                alt="Zoomed Detail"
-                referrerPolicy="no-referrer"
-                className="w-full h-auto object-contain rounded-lg"
-              />
+            <div 
+              className="max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl flex items-center justify-center cursor-default"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isVideoMedia(zoomImage) ? (
+                <video
+                  src={zoomImage}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain bg-black"
+                />
+              ) : (
+                <img
+                  src={zoomImage}
+                  alt="Zoomed Detail"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-auto max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                />
+              )}
             </div>
           </div>
         )}
