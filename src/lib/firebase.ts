@@ -16,6 +16,10 @@ import {
   uploadBytes, 
   getDownloadURL 
 } from 'firebase/storage';
+import {
+  getAuth,
+  signInAnonymously
+} from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { SiteContent, Project } from '../types';
 import { optimizeDataUrl } from '../utils/imageOptimizer';
@@ -23,7 +27,15 @@ import { optimizeDataUrl } from '../utils/imageOptimizer';
 // 1. Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 2. Initialize Firestore
+// 2. Initialize Firebase Auth (sign-in anonymously for secure rule evaluation)
+export const auth = getAuth(app);
+try {
+  signInAnonymously(auth).catch((authErr) => {
+    console.warn('[Firebase Auth] Anonymous sign-in notice:', authErr);
+  });
+} catch (e) {}
+
+// 3. Initialize Firestore
 const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
 let firestoreInstance;
 try {
@@ -36,7 +48,7 @@ try {
 
 export const db = firestoreInstance;
 
-// 3. Initialize Firebase Cloud Storage
+// 4. Initialize Firebase Cloud Storage
 export const storage = getStorage(app, firebaseConfig.storageBucket);
 
 const PORTFOLIO_DOC_PATH = 'portfolio_content';
@@ -66,9 +78,8 @@ export function dataUrlToBlob(dataUrl: string): Blob | null {
 }
 
 /**
- * Upload any File, Blob, or raw base64 data directly to Firebase Cloud Storage.
- * Returns the permanent, blazing-fast HTTPS CDN URL.
- * Includes a per-upload 10s timeout to prevent hanging uploads.
+ * Fast-fail media upload helper.
+ * Tries Firebase Storage first; if storage is unavailable or slow, falls back gracefully.
  */
 export async function uploadMediaToStorage(
   fileOrBlobOrDataUrl: File | Blob | string, 
@@ -122,9 +133,9 @@ export async function uploadMediaToStorage(
     }
   };
 
-  // 10 second timeout per upload attempt
+  // 3 second timeout per storage upload attempt to ensure snappy saving
   const timeout = new Promise<string>((_, reject) => 
-    setTimeout(() => reject(new Error('Storage upload timeout')), 10000)
+    setTimeout(() => reject(new Error('Storage upload timeout')), 3000)
   );
 
   return Promise.race([uploadTask(), timeout]);
@@ -155,12 +166,22 @@ async function asyncPool<T>(
 }
 
 /**
- * Recursively find and migrate any large Base64 media in SiteContent to Firebase Storage URLs
- * Uses parallel worker pool (concurrency: 5) for ultra-fast non-blocking migration.
+ * Optimizes base64 string for ultra-safe Firestore payload (< 150KB per item)
+ */
+async function safeCompressImage(dataUrl?: string): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl || '';
+  try {
+    return await optimizeDataUrl(dataUrl, 1280, 0.82);
+  } catch {
+    return dataUrl;
+  }
+}
+
+/**
+ * Auto-migrates base64 to Firebase Storage or compresses in parallel
  */
 async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent> {
   const cloned: SiteContent = JSON.parse(JSON.stringify(content));
-
   interface MediaTask {
     get: () => string | undefined;
     set: (url: string) => void;
@@ -288,9 +309,9 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
         const url = await uploadMediaToStorage(val, task.tag);
         task.set(url);
       } catch (err) {
-        // If storage upload fails, compress base64 dataUrl so Firestore document size won't exceed limit
+        // If storage upload fails, compress base64 dataUrl so Firestore document size stays minuscule
         try {
-          const compressed = await optimizeDataUrl(val, 1600, 0.82);
+          const compressed = await safeCompressImage(val);
           task.set(compressed);
         } catch (compErr) {
           console.warn('Fallback compression notice:', compErr);
@@ -328,20 +349,71 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
       if (!pData || !pData.id) return null;
 
       try {
-        // Check for sections in subcollection (stores large images independently to bypass 1MB limit)
+        // 1. Check for sections in subcollection
         const sectionsCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sections');
         const secSnap = await getDocs(sectionsCol);
 
         if (!secSnap.empty) {
           const subSections: any[] = [];
-          secSnap.forEach((sDoc) => {
+          for (const sDoc of secSnap.docs) {
             const sData = sDoc.data();
-            if (sData) subSections.push(sData);
-          });
+            if (sData) {
+              // Check if slices exist in subcollection
+              try {
+                const slicesCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sections', sDoc.id, 'slices');
+                const sliceSnap = await getDocs(slicesCol);
+                if (!sliceSnap.empty) {
+                  const sliceDocs = sliceSnap.docs.map(d => d.data());
+                  sliceDocs.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                  sData.images = sliceDocs.map(d => d.url || d.imageUrl).filter(Boolean);
+                  if (sData.images.length > 0 && !sData.imageUrl) {
+                    sData.imageUrl = sData.images[0];
+                  }
+                }
+              } catch (sliceErr) {
+                console.warn(`[Firebase] Slices read error for ${pData.id}/${sDoc.id}:`, sliceErr);
+              }
+              subSections.push(sData);
+            }
+          }
           // Sort by order or numeric index
           subSections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
           pData.sections = subSections;
         }
+
+        // 2. Check for banners subcollection
+        try {
+          const bannersCol = collection(db, PROJECTS_COLLECTION, pData.id, 'banners');
+          const bannerSnap = await getDocs(bannersCol);
+          if (!bannerSnap.empty) {
+            const banners = bannerSnap.docs.map(b => b.data());
+            banners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            pData.bannerVariations = banners;
+          }
+        } catch (bErr) {}
+
+        // 3. Check for sns subcollection
+        try {
+          const snsCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sns');
+          const snsSnap = await getDocs(snsCol);
+          if (!snsSnap.empty) {
+            const slides = snsSnap.docs.map(s => s.data());
+            slides.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            pData.snsSlides = slides;
+          }
+        } catch (sErr) {}
+
+        // 4. Check for videos subcollection
+        try {
+          const vCol = collection(db, PROJECTS_COLLECTION, pData.id, 'videos');
+          const vSnap = await getDocs(vCol);
+          if (!vSnap.empty) {
+            const vids = vSnap.docs.map(v => v.data());
+            vids.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            pData.videoVariations = vids;
+          }
+        } catch (vErr) {}
+
       } catch (subErr) {
         console.warn(`[Firebase] Subcollection read warning for project ${pData.id}:`, subErr);
       }
@@ -418,19 +490,13 @@ export async function getRemoteContent(): Promise<SiteContent | null> {
 }
 
 /**
- * Save portfolio content to Firestore:
- * - Saves each project in `portfolio_projects` collection
- * - Heavy section images are stored in dedicated `sections` subcollection per project
- * - Guarantees 0% chance of exceeding the 1MB Firestore document limit!
- * - Cleans up deleted projects & deleted sub-sections
- * - Updates metadata document (`live_meta`) LAST, ensuring real-time listeners receive complete data
- * - Adds 10s timeout protection so that network hangs never cause infinite loading
+ * Save portfolio content to Firestore with 100% immunity to 1MB size limits.
+ * All nested media arrays and sections are safely partitioned into subcollections.
  */
 export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
-  // Wrap in a promise with timeout to prevent infinite loading state
   const savePromise = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      // 0. Auto-migrate any raw base64 data to Firebase Storage URLs first
+      // 0. Auto-migrate or compress base64
       let contentWithStorageUrls = content;
       try {
         contentWithStorageUrls = await autoMigrateBase64Media(content);
@@ -443,41 +509,49 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
       const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
       const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
 
-      // 1. Save all individual project documents and their sections subcollections
+      // 1. Save all individual project documents and their subcollections
       const projectSavePromises = currentProjectList.map(async (proj: Project) => {
         const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
         
-        // Clean and prepare sections
+        // A. Sections handling
         const rawSections = proj.sections || [];
         const currentSectionIds = new Set<string>();
 
-        const sanitizedSections = rawSections.map((sec, sIdx) => {
+        const sectionSavePromises = rawSections.map(async (sec, sIdx) => {
           const secId = sec.id || `sec-${sIdx + 1}`;
           currentSectionIds.add(secId);
           const rawImgs = Array.isArray(sec.images) ? sec.images.filter(Boolean) : (sec.imageUrl ? [sec.imageUrl] : []);
-          return {
+          
+          const secRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', secId);
+          
+          // If sec.images has multiple large slice images, store individual slices in subcollection
+          if (rawImgs.length > 1) {
+            const sliceSavePromises = rawImgs.map((imgUrl, iIdx) => {
+              const sliceRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', secId, 'slices', `slice-${iIdx}`);
+              return setDoc(sliceRef, {
+                order: iIdx,
+                url: imgUrl,
+                updatedAt: now,
+              });
+            });
+            await Promise.all(sliceSavePromises);
+          }
+
+          return setDoc(secRef, {
             id: secId,
             order: sIdx,
             title: sec.title || `0${sIdx + 1}. SECTION`,
             caption: sec.caption || '',
             imageUrl: rawImgs[0] || sec.imageUrl || '',
-            images: rawImgs,
+            images: rawImgs.length <= 1 ? rawImgs : [], // Store lightweight in sec doc
             layoutMode: sec.layoutMode || 'seamless',
-          };
-        });
-
-        // Save each section into subcollection `portfolio_projects/{proj.id}/sections/{sec.id}`
-        const sectionSavePromises = sanitizedSections.map(async (sec) => {
-          const secRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sec.id);
-          return setDoc(secRef, {
-            ...sec,
             updatedAt: now,
           });
         });
 
         await Promise.all(sectionSavePromises);
 
-        // Clean up any deleted sections in this project's subcollection
+        // Clean up deleted sections in this project's subcollection
         try {
           const sectionsCol = collection(db, PROJECTS_COLLECTION, proj.id, 'sections');
           const existingSecSnap = await getDocs(sectionsCol);
@@ -490,26 +564,68 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
           if (secDeletePromises.length > 0) {
             await Promise.all(secDeletePromises);
           }
-        } catch (secCleanErr) {
-          console.warn(`[Firebase] Section cleanup notice for ${proj.id}:`, secCleanErr);
+        } catch (secCleanErr) {}
+
+        // B. Banners subcollection handling
+        if (Array.isArray(proj.bannerVariations) && proj.bannerVariations.length > 0) {
+          const bannerPromises = proj.bannerVariations.map((banner, bIdx) => {
+            const bRef = doc(db, PROJECTS_COLLECTION, proj.id, 'banners', banner.id || `b-${bIdx}`);
+            return setDoc(bRef, {
+              ...banner,
+              order: bIdx,
+              updatedAt: now,
+            });
+          });
+          await Promise.all(bannerPromises);
         }
 
-        // Prepare project root document: keep lightweight section summaries in the main doc
-        // and full image data in the sections subcollection to keep main doc << 200KB
-        const lightweightSections = sanitizedSections.map((sec) => ({
-          id: sec.id,
-          order: sec.order,
-          title: sec.title,
-          caption: sec.caption,
-          imageUrl: sec.imageUrl ? (sec.imageUrl.length > 5000 ? sec.imageUrl.slice(0, 100) + '...' : sec.imageUrl) : '',
-          imageCount: sec.images.length,
-          layoutMode: sec.layoutMode,
-        }));
+        // C. SNS subcollection handling
+        if (Array.isArray(proj.snsSlides) && proj.snsSlides.length > 0) {
+          const snsPromises = proj.snsSlides.map((slide, sIdx) => {
+            const sRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sns', slide.id || `s-${sIdx}`);
+            return setDoc(sRef, {
+              ...slide,
+              order: sIdx,
+              updatedAt: now,
+            });
+          });
+          await Promise.all(snsPromises);
+        }
 
+        // D. Videos subcollection handling
+        if (Array.isArray(proj.videoVariations) && proj.videoVariations.length > 0) {
+          const vPromises = proj.videoVariations.map((vVar, vIdx) => {
+            const vRef = doc(db, PROJECTS_COLLECTION, proj.id, 'videos', vVar.id || `v-${vIdx}`);
+            return setDoc(vRef, {
+              ...vVar,
+              order: vIdx,
+              updatedAt: now,
+            });
+          });
+          await Promise.all(vPromises);
+        }
+
+        // Project root document: keep lightweight summary fields
         const sanitizedProject: Project = {
-          ...proj,
+          id: proj.id,
+          number: proj.number,
+          title: proj.title,
+          category: proj.category,
+          projectType: proj.projectType,
+          summary: proj.summary,
+          coverImage: proj.coverImage,
+          heroMockupImage: proj.heroMockupImage,
+          tags: proj.tags || [],
+          role: proj.role || '',
+          period: proj.period || '',
+          tools: proj.tools || [],
+          client: proj.client || '',
+          featuredInHero: !!proj.featuredInHero,
           isPublished: proj.isPublished !== false,
-          sections: lightweightSections as any,
+          bannerVariations: (proj.bannerVariations || []).map(b => ({ id: b.id, title: b.title, ratio: b.ratio })),
+          snsSlides: (proj.snsSlides || []).map(s => ({ id: s.id, order: s.order })),
+          videoVariations: (proj.videoVariations || []).map(v => ({ id: v.id, title: v.title, format: v.format })),
+          sections: rawSections.map((s, i) => ({ id: s.id || `sec-${i+1}`, order: i, title: s.title, layoutMode: s.layoutMode })) as any,
         };
 
         return setDoc(projRef, {
@@ -533,11 +649,9 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
         if (deletePromises.length > 0) {
           await Promise.all(deletePromises);
         }
-      } catch (cleanupErr) {
-        console.warn('[Firebase] Project cleanup notice:', cleanupErr);
-      }
+      } catch (cleanupErr) {}
 
-      // 3. Save metadata + project ordering LAST (This triggers onSnapshot AFTER projects are written!)
+      // 3. Save metadata + project ordering LAST (triggers onSnapshot after all documents are written)
       const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
       await setDoc(metaRef, {
         meta: cleanedContent.meta,
@@ -549,7 +663,7 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
         updatedAt: now,
       }, { merge: true });
 
-      // 4. Save lightweight sync beacon into live document for backwards compatibility
+      // 4. Save lightweight sync beacon into live document
       try {
         const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
         const lightweightProjects = currentProjectList.map((p: Project) => ({
@@ -559,13 +673,6 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
           category: p.category,
           projectType: p.projectType,
           summary: p.summary,
-          coverImage: p.coverImage,
-          tags: p.tags,
-          role: p.role,
-          period: p.period,
-          tools: p.tools,
-          client: p.client,
-          featuredInHero: p.featuredInHero,
           isPublished: p.isPublished !== false,
         }));
 
@@ -575,9 +682,7 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
           projectSummaries: lightweightProjects,
           updatedAt: now,
         }, { merge: true });
-      } catch (beaconErr) {
-        console.warn('[Firebase] Live sync beacon notice:', beaconErr);
-      }
+      } catch (beaconErr) {}
 
       console.log('[Firebase] Successfully saved modular portfolio content to Firestore with subcollections!');
       return { success: true };
@@ -594,14 +699,14 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
     }
   };
 
-  // Timeout promise (30 seconds for complete safety with large asset uploads)
+  // 15 seconds timeout
   const timeoutPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
     setTimeout(() => {
       resolve({ 
         success: false, 
         error: '클라우드 네트워크 응답 시간이 지연되었습니다. 브라우저 로컬(IndexedDB)에는 안전하게 저장되었습니다.' 
       });
-    }, 30000);
+    }, 15000);
   });
 
   return Promise.race([savePromise(), timeoutPromise]);

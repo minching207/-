@@ -26,7 +26,7 @@ interface CategoryTab {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const INITIAL_VISIBLE_COUNT = 6;
+const INITIAL_VISIBLE_COUNT = 12;
 
 export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelectProject }) => {
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
