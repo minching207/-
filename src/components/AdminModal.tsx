@@ -527,16 +527,28 @@ export const AdminModal: React.FC<AdminModalProps> = ({
             <div className="bg-amber-950/80 border-b border-amber-800/80 px-6 py-2 flex items-center justify-between text-xs text-amber-300 font-medium">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>작성하신 내용이 브라우저에 안전하게 보관되었습니다. (클라우드 할당량 리셋 후 자동 동기화됩니다)</span>
+                <span>작성하신 내용이 브라우저에 안전하게 보관되었습니다. (Firebase 일일 할당량 리셋 시 자동 클라우드 동기화됩니다)</span>
               </div>
+              <button
+                onClick={handleExportJson}
+                className="underline hover:text-white ml-3 text-amber-200 cursor-pointer"
+              >
+                JSON 백업 다운로드
+              </button>
             </div>
           )}
           {saveError && (
             <div className="bg-red-950/80 border-b border-red-800/80 px-6 py-2 flex items-center justify-between text-xs text-red-300 font-medium">
               <div className="flex items-center gap-2">
                 <X className="w-4 h-4 text-red-400 shrink-0" />
-                <span>저장 오류: {saveError}</span>
+                <span>{saveError}</span>
               </div>
+              <button
+                onClick={handleExportJson}
+                className="underline hover:text-white ml-3 text-red-200 cursor-pointer"
+              >
+                데이터 백업 파일 받기
+              </button>
             </div>
           )}
 

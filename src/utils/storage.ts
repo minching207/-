@@ -185,6 +185,36 @@ export async function loadSiteContentAsync(): Promise<SiteContent | null> {
 }
 
 /**
+ * Create a lightweight version of SiteContent safe for 5MB localStorage limit
+ */
+function sanitizeForLocalStorage(content: SiteContent): SiteContent {
+  try {
+    const serialized = JSON.stringify(content);
+    // If within 2.5MB, safe to store directly
+    if (serialized.length < 2.5 * 1024 * 1024) {
+      return content;
+    }
+    // If too large, clone and replace large video dataUrls with placeholders
+    const clone: SiteContent = JSON.parse(serialized);
+    if (Array.isArray(clone.projects)) {
+      for (const proj of clone.projects) {
+        if (Array.isArray(proj.videoVariations)) {
+          for (const v of proj.videoVariations) {
+            if (v.videoUrl && v.videoUrl.startsWith('data:video/')) {
+              // Replace huge base64 with empty placeholder (IndexedDB & Cloud will have the real one)
+              v.videoUrl = '';
+            }
+          }
+        }
+      }
+    }
+    return clone;
+  } catch {
+    return content;
+  }
+}
+
+/**
  * Save site content to:
  * 1. LocalStorage (Instant cache)
  * 2. IndexedDB (Unlimited capacity storage)
@@ -197,11 +227,12 @@ export async function saveSiteContent(content: SiteContent): Promise<{ success: 
     updatedAt: Date.now(),
   };
 
-  // 1. Save to localStorage
+  // 1. Save to localStorage (Sanitized to avoid 5MB quota ceiling)
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(timestampedContent));
+    const safePayload = sanitizeForLocalStorage(timestampedContent);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(safePayload));
   } catch (err) {
-    console.warn('localStorage quota exceeded.', err);
+    console.warn('localStorage quota bypass notice (IndexedDB & Cloud will preserve full data):', err);
   }
 
   // 2. Save to IndexedDB (handles any file size / base64 without limit)

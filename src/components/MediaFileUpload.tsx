@@ -63,6 +63,7 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<string>('업로드 중...');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -83,6 +84,7 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
 
     const isImageFile = file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i);
     const isVideoFile = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|ogg)$/i);
+    const fileSizeMb = (file.size / (1024 * 1024)).toFixed(1);
 
     if (accept === 'image' && !isImageFile) {
       setErrorMsg('이미지 파일(JPG, PNG, WebP, GIF 등)만 업로드할 수 있습니다.');
@@ -96,22 +98,32 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
       return;
     }
 
+    setProcessingStatus(`Firebase Cloud Storage 업로드 중... (${fileSizeMb}MB)`);
+
     try {
       // 1. Primary path: Upload directly to Firebase Cloud Storage (Original Quality preserved!)
       try {
         const storageUrl = await uploadMediaToStorage(file);
-        onChange(storageUrl);
-        setIsProcessing(false);
-        return;
+        if (storageUrl && (storageUrl.startsWith('http://') || storageUrl.startsWith('https://'))) {
+          onChange(storageUrl);
+          setIsProcessing(false);
+          return;
+        }
       } catch (storageErr: any) {
         console.warn('[Storage Upload Warning - Falling back to local dataUrl]:', storageErr);
       }
 
       // 2. Fallback path if Storage has temporary issue
       if (isImageFile) {
+        setProcessingStatus('이미지 최적화 처리 중...');
         const optimizedDataUrl = await optimizeImageFile(file, 1920, 0.88);
         onChange(optimizedDataUrl);
       } else if (isVideoFile) {
+        if (file.size > 8 * 1024 * 1024) {
+          setErrorMsg(`영상 용량(${fileSizeMb}MB)이 큽니다. Cloud Storage 업로드를 위해 네트워크 상태를 확인 후 다시 시도해주세요.`);
+          setIsProcessing(false);
+          return;
+        }
         const reader = new FileReader();
         reader.onload = (e) => {
           const dataUrl = e.target?.result as string;
@@ -261,7 +273,7 @@ export const MediaFileUpload: React.FC<MediaFileUploadProps> = ({
                 {isProcessing && (
                   <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white text-xs gap-2 z-20">
                     <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
-                    <span className="font-mono text-amber-300">Firebase Storage 원본 고속 업로드 중...</span>
+                    <span className="font-mono text-amber-300">{processingStatus}</span>
                   </div>
                 )}
               </div>

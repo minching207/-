@@ -8,7 +8,8 @@ import {
   deleteDoc,
   collection,
   getDocs,
-  onSnapshot 
+  onSnapshot,
+  Firestore
 } from 'firebase/firestore';
 import { 
   getStorage, 
@@ -27,26 +28,34 @@ import { optimizeDataUrl } from '../utils/imageOptimizer';
 // 1. Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 2. Initialize Firebase Auth (sign-in anonymously for secure rule evaluation)
+// 2. Initialize Firebase Auth
 export const auth = getAuth(app);
 try {
   signInAnonymously(auth).catch((authErr) => {
-    console.warn('[Firebase Auth] Anonymous sign-in notice:', authErr);
+    console.warn('[Firebase Auth] Anonymous sign-in note:', authErr?.message || authErr);
   });
 } catch (e) {}
 
-// 3. Initialize Firestore
-const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
-let firestoreInstance;
+// 3. Initialize Firestore Instances (Primary Applet DB and Default DB)
+const configuredDbId = firebaseConfig.firestoreDatabaseId || '(default)';
+
+let primaryFirestore: Firestore;
 try {
-  firestoreInstance = initializeFirestore(app, {
+  primaryFirestore = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
-  }, dbId);
+  }, configuredDbId);
 } catch (e) {
-  firestoreInstance = getFirestore(app, dbId);
+  primaryFirestore = getFirestore(app, configuredDbId);
 }
 
-export const db = firestoreInstance;
+let defaultFirestore: Firestore;
+try {
+  defaultFirestore = getFirestore(app, '(default)');
+} catch (e) {
+  defaultFirestore = primaryFirestore;
+}
+
+export const db = primaryFirestore;
 
 // 4. Initialize Firebase Cloud Storage
 export const storage = getStorage(app, firebaseConfig.storageBucket);
@@ -78,19 +87,26 @@ export function dataUrlToBlob(dataUrl: string): Blob | null {
 }
 
 /**
- * Fast-fail media upload helper.
- * Tries Firebase Storage first with short timeout; if unavailable, falls back cleanly to compressed base64.
+ * Robust media upload helper to Firebase Cloud Storage.
+ * Handles images, animated GIFs, and videos of any size with realistic network timeouts.
  */
 export async function uploadMediaToStorage(
   fileOrBlobOrDataUrl: File | Blob | string, 
   customFileName?: string,
   folder: string = 'portfolio_media'
 ): Promise<string> {
+  const isVideo = 
+    (typeof fileOrBlobOrDataUrl === 'string' && fileOrBlobOrDataUrl.startsWith('data:video/')) ||
+    (fileOrBlobOrDataUrl instanceof File && fileOrBlobOrDataUrl.type.startsWith('video/')) ||
+    (fileOrBlobOrDataUrl instanceof Blob && fileOrBlobOrDataUrl.type?.startsWith('video/'));
+
+  const uploadTimeoutMs = isVideo ? 90000 : 25000; // 90s for video, 25s for images
+
   const uploadTask = async (): Promise<string> => {
     try {
       let targetBlob: Blob;
-      let ext = 'webp';
-      let mimeType = 'image/webp';
+      let ext = isVideo ? 'mp4' : 'webp';
+      let mimeType = isVideo ? 'video/mp4' : 'image/webp';
 
       if (typeof fileOrBlobOrDataUrl === 'string') {
         if (fileOrBlobOrDataUrl.startsWith('http://') || fileOrBlobOrDataUrl.startsWith('https://')) {
@@ -98,11 +114,18 @@ export async function uploadMediaToStorage(
         }
         const converted = dataUrlToBlob(fileOrBlobOrDataUrl);
         if (!converted) {
-          throw new Error('Invalid image data format');
+          throw new Error('Invalid media data format');
         }
         targetBlob = converted;
         mimeType = targetBlob.type;
-        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+        if (mimeType.includes('video/webm')) ext = 'webm';
+        else if (mimeType.includes('video/quicktime') || mimeType.includes('video/mov')) ext = 'mov';
+        else if (mimeType.includes('video/ogg')) ext = 'ogg';
+        else if (mimeType.includes('video')) ext = 'mp4';
+        else if (mimeType.includes('gif')) ext = 'gif';
+        else if (mimeType.includes('png')) ext = 'png';
+        else if (mimeType.includes('webp')) ext = 'webp';
+        else ext = 'jpg';
       } else if (fileOrBlobOrDataUrl instanceof File) {
         targetBlob = fileOrBlobOrDataUrl;
         mimeType = fileOrBlobOrDataUrl.type;
@@ -110,8 +133,12 @@ export async function uploadMediaToStorage(
         if (fileExt) ext = fileExt.toLowerCase();
       } else {
         targetBlob = fileOrBlobOrDataUrl;
-        mimeType = fileOrBlobOrDataUrl.type || 'image/webp';
-        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+        mimeType = fileOrBlobOrDataUrl.type || (isVideo ? 'video/mp4' : 'image/webp');
+        if (mimeType.includes('gif')) ext = 'gif';
+        else if (mimeType.includes('png')) ext = 'png';
+        else if (mimeType.includes('webp')) ext = 'webp';
+        else if (mimeType.includes('video')) ext = 'mp4';
+        else ext = 'jpg';
       }
 
       const cleanName = customFileName 
@@ -122,7 +149,7 @@ export async function uploadMediaToStorage(
       const storageRef = ref(storage, fullPath);
       
       const snapshot = await uploadBytes(storageRef, targetBlob, {
-        contentType: mimeType || 'image/webp',
+        contentType: mimeType || (isVideo ? 'video/mp4' : 'image/webp'),
       });
       
       const downloadUrl = await getDownloadURL(snapshot.ref);
@@ -132,12 +159,11 @@ export async function uploadMediaToStorage(
     }
   };
 
-  // 1.5s timeout per storage upload
-  const timeout = new Promise<string>((_, reject) => 
-    setTimeout(() => reject(new Error('Storage upload timeout')), 1500)
+  const timeoutPromise = new Promise<string>((_, reject) => 
+    setTimeout(() => reject(new Error(`Storage upload timeout (${uploadTimeoutMs / 1000}s)`)), uploadTimeoutMs)
   );
 
-  return Promise.race([uploadTask(), timeout]);
+  return Promise.race([uploadTask(), timeoutPromise]);
 }
 
 /**
@@ -165,19 +191,20 @@ async function asyncPool<T>(
 }
 
 /**
- * Optimizes base64 string for ultra-safe Firestore payload (< 80KB per item)
+ * Optimizes image base64 string for safe Firestore payload (< 70KB per image)
  */
 async function safeCompressImage(dataUrl?: string): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl || '';
+  if (dataUrl.startsWith('data:video/')) return dataUrl; // Don't canvas-compress video strings
   try {
-    return await optimizeDataUrl(dataUrl, 1400, 0.82);
+    return await optimizeDataUrl(dataUrl, 1200, 0.78);
   } catch {
     return dataUrl;
   }
 }
 
 /**
- * Optimizes all base64 media within content in parallel
+ * Optimizes and uploads all base64 media within content to Firebase Cloud Storage
  */
 async function optimizeAllMedia(content: SiteContent): Promise<SiteContent> {
   const cloned: SiteContent = JSON.parse(JSON.stringify(content));
@@ -185,6 +212,7 @@ async function optimizeAllMedia(content: SiteContent): Promise<SiteContent> {
     get: () => string | undefined;
     set: (url: string) => void;
     tag: string;
+    isVideo?: boolean;
   }
 
   const tasks: MediaTask[] = [];
@@ -257,7 +285,8 @@ async function optimizeAllMedia(content: SiteContent): Promise<SiteContent> {
             tasks.push({
               get: () => vVar.videoUrl,
               set: (url) => { vVar.videoUrl = url; },
-              tag: `video_${proj.id}_${vIdx}_${Date.now()}`
+              tag: `video_${proj.id}_${vIdx}_${Date.now()}`,
+              isVideo: true
             });
           }
           if (vVar.coverImage && vVar.coverImage.startsWith('data:')) {
@@ -301,22 +330,24 @@ async function optimizeAllMedia(content: SiteContent): Promise<SiteContent> {
   }
 
   if (tasks.length > 0) {
-    await asyncPool(8, tasks, async (task) => {
+    await asyncPool(4, tasks, async (task) => {
       const val = task.get();
       if (!val || !val.startsWith('data:')) return;
       
-      // Fast compress first to ensure minimal payload
-      const compressed = await safeCompressImage(val);
-      task.set(compressed);
+      // For images, optimize locally first
+      if (!task.isVideo) {
+        const compressed = await safeCompressImage(val);
+        task.set(compressed);
+      }
 
-      // Attempt background upload to storage
+      // Upload to Firebase Cloud Storage
       try {
-        const url = await uploadMediaToStorage(compressed, task.tag);
-        if (url) {
+        const url = await uploadMediaToStorage(val, task.tag);
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
           task.set(url);
         }
       } catch (err) {
-        // Fallback to compressed base64 is already set
+        console.warn(`Storage upload background note for ${task.tag}:`, err);
       }
     });
   }
@@ -336,17 +367,31 @@ function cleanForFirestore(obj: any): any {
 }
 
 /**
- * Reassemble full SiteContent from metadata + individual project collection
+ * Reads content from a specific Firestore database instance
  */
-async function assembleFromCollection(): Promise<SiteContent | null> {
+async function readFromDb(targetDb: Firestore): Promise<SiteContent | null> {
+  // 1. Try consolidated live document first (fastest, lowest read cost)
   try {
-    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
+    const liveRef = doc(targetDb, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
+    const liveSnap = await getDoc(liveRef);
+    if (liveSnap.exists()) {
+      const data = liveSnap.data();
+      if (data && data.content && Array.isArray(data.content.projects) && data.content.projects.length > 0) {
+        return data.content as SiteContent;
+      }
+    }
+  } catch (liveErr) {
+    console.warn('[Firebase] Consolidated read notice:', liveErr);
+  }
+
+  // 2. Try assembling from collection
+  try {
+    const metaRef = doc(targetDb, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
     const metaSnap = await getDoc(metaRef);
-    const projectsCol = collection(db, PROJECTS_COLLECTION);
+    const projectsCol = collection(targetDb, PROJECTS_COLLECTION);
     const projectsSnap = await getDocs(projectsCol);
 
     const resolvedProjects: Project[] = [];
-    
     for (const docItem of projectsSnap.docs) {
       const pData = docItem.data() as any;
       if (pData && pData.id) {
@@ -361,7 +406,6 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
     }
 
     if (resolvedProjects.length > 0 || metaSnap.exists()) {
-      // Sort projects according to projectOrder if available
       if (Array.isArray(metaData.projectOrder) && metaData.projectOrder.length > 0) {
         resolvedProjects.sort((a, b) => {
           const indexA = metaData.projectOrder.indexOf(a.id);
@@ -385,8 +429,8 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
 
       return assembledContent as SiteContent;
     }
-  } catch (error) {
-    console.warn('[Firebase] assembleFromCollection warning:', error);
+  } catch (colErr) {
+    console.warn('[Firebase] Collection read notice:', colErr);
   }
   return null;
 }
@@ -395,108 +439,125 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
  * Fetch remote portfolio content from Firestore with multi-tier fallback
  */
 export async function getRemoteContent(): Promise<SiteContent | null> {
-  // 1. Primary approach: Assemble from modular project collection + metadata
-  const collectionContent = await assembleFromCollection();
-  if (collectionContent && collectionContent.projects && collectionContent.projects.length > 0) {
-    return collectionContent;
-  }
-
-  // 2. Fallback attempt: Read legacy consolidated document if collection is not yet populated
+  // Try primary configured DB first
   try {
-    const docRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      if (data && data.content && Array.isArray(data.content.projects) && data.content.projects.length > 0) {
-        return data.content as SiteContent;
-      }
+    const content = await readFromDb(primaryFirestore);
+    if (content && content.projects && content.projects.length > 0) {
+      return content;
     }
-  } catch (error) {
-    console.warn('[Firebase] Consolidated document fallback warning:', error);
+  } catch (e) {}
+
+  // Try default DB fallback
+  if (defaultFirestore !== primaryFirestore) {
+    try {
+      const defaultContent = await readFromDb(defaultFirestore);
+      if (defaultContent && defaultContent.projects && defaultContent.projects.length > 0) {
+        return defaultContent;
+      }
+    } catch (e) {}
   }
 
-  return collectionContent;
+  return null;
 }
 
 /**
- * Save portfolio content to Firestore with per-project partitioning and image optimization.
+ * Saves content to a specific Firestore database instance with ultra-low write cost (1 write unit)
  */
-export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
+async function writeToDb(targetDb: Firestore, cleanedContent: SiteContent, now: string): Promise<boolean> {
+  // 1. Primary write: Consolidated live document (uses exactly 1 write operation)
+  const liveRef = doc(targetDb, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
+  await setDoc(liveRef, {
+    content: cleanedContent,
+    updatedAt: now,
+  });
+
+  // 2. Secondary metadata write
   try {
-    // 0. Auto-optimize images
-    let contentWithOptimizedMedia = content;
-    try {
-      contentWithOptimizedMedia = await optimizeAllMedia(content);
-    } catch (optErr) {
-      console.warn('[Firebase] optimizeAllMedia notice:', optErr);
-    }
-
-    const cleanedContent = cleanForFirestore(contentWithOptimizedMedia);
-    const now = new Date().toISOString();
-    const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
-    const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
-
-    // 1. Save all individual project documents in parallel
-    const projectSavePromises = currentProjectList.map((proj: Project) => {
-      const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
-      return setDoc(projRef, {
-        ...proj,
-        isPublished: proj.isPublished !== false,
-        updatedAt: now,
-      });
-    });
-
-    await Promise.all(projectSavePromises);
-
-    // 2. Clean up any deleted projects from the collection
-    try {
-      const projectsCol = collection(db, PROJECTS_COLLECTION);
-      const existingSnap = await getDocs(projectsCol);
-      const deletePromises: Promise<any>[] = [];
-      existingSnap.forEach((docItem) => {
-        if (!currentProjectIds.has(docItem.id)) {
-          deletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, docItem.id)));
-        }
-      });
-      if (deletePromises.length > 0) {
-        await Promise.all(deletePromises);
-      }
-    } catch (cleanupErr) {}
-
-    // 3. Save metadata + project ordering
-    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
+    const metaRef = doc(targetDb, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
     await setDoc(metaRef, {
       meta: cleanedContent.meta,
       hero: cleanedContent.hero,
       approach: cleanedContent.approach,
       about: cleanedContent.about,
       contact: cleanedContent.contact,
-      projectOrder: currentProjectList.map((p: Project) => p.id),
+      projectOrder: cleanedContent.projects?.map((p: Project) => p.id) || [],
       updatedAt: now,
     }, { merge: true });
+  } catch (metaErr) {}
 
-    // 4. Save live backup document
+  return true;
+}
+
+/**
+ * Save portfolio content to Firestore with ultra-efficient 1-write engine & quota failover
+ */
+export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
+  const saveOperation = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-      await setDoc(liveRef, {
-        content: cleanedContent,
-        updatedAt: now,
-      }, { merge: true });
-    } catch (liveErr) {}
+      // 0. Auto-optimize images & upload large media to Firebase Cloud Storage
+      let contentWithOptimizedMedia = content;
+      try {
+        contentWithOptimizedMedia = await optimizeAllMedia(content);
+      } catch (optErr) {
+        console.warn('[Firebase] optimizeAllMedia notice:', optErr);
+      }
 
-    console.log('[Firebase] Successfully saved portfolio content to Firestore!');
-    return { success: true };
-  } catch (error: any) {
-    console.error('[Firebase] Save to Firestore failed:', error);
-    const rawMsg = error?.message || '';
-    let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
-    if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
-      errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
-    } else if (rawMsg) {
-      errMsg = `클라우드 저장 오류: ${rawMsg}`;
+      const cleanedContent = cleanForFirestore(contentWithOptimizedMedia);
+      const now = new Date().toISOString();
+
+      let saved = false;
+      let lastError: any = null;
+
+      // Try primary DB
+      try {
+        saved = await writeToDb(primaryFirestore, cleanedContent, now);
+      } catch (err: any) {
+        lastError = err;
+        console.warn('[Firebase] Primary DB write error, attempting default DB:', err);
+      }
+
+      // If primary failed (e.g. quota limit on named sandbox DB), try default DB
+      if (!saved && defaultFirestore !== primaryFirestore) {
+        try {
+          saved = await writeToDb(defaultFirestore, cleanedContent, now);
+        } catch (err: any) {
+          lastError = err;
+          console.warn('[Firebase] Default DB write error:', err);
+        }
+      }
+
+      if (saved) {
+        console.log('[Firebase] Successfully saved portfolio content to Firestore!');
+        return { success: true };
+      }
+
+      const rawMsg = lastError?.message || '';
+      let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
+      if (rawMsg.includes('resource-exhausted') || rawMsg.includes('Quota limit exceeded')) {
+        errMsg = 'Firebase 일일 무료 쓰기 할당량이 일시 소진되었습니다. (한국시간 오후 4시경 리셋 / 브라우저에는 안전 보관됨)';
+      } else if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
+        errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
+      } else if (rawMsg) {
+        errMsg = `클라우드 저장 오류: ${rawMsg}`;
+      }
+      return { success: false, error: errMsg };
+    } catch (error: any) {
+      console.error('[Firebase] Save to Firestore failed:', error);
+      return { success: false, error: error?.message || '클라우드 저장 실패' };
     }
-    return { success: false, error: errMsg };
-  }
+  };
+
+  // 15 second timeout to allow media uploads without blocking UI
+  const timeoutPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
+    setTimeout(() => {
+      resolve({ 
+        success: false, 
+        error: '클라우드 네트워크 응답이 지연되었습니다. 작성하신 내용은 브라우저(IndexedDB)에 100% 안전하게 저장되어 있습니다.' 
+      });
+    }, 15000);
+  });
+
+  return Promise.race([saveOperation(), timeoutPromise]);
 }
 
 /**
@@ -504,12 +565,12 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
  */
 export function subscribeToRemoteContent(onUpdate: (content: SiteContent) => void): () => void {
   try {
-    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
-    const unsubscribe = onSnapshot(metaRef, async (snap) => {
+    const liveRef = doc(primaryFirestore, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
+    const unsubscribe = onSnapshot(liveRef, async (snap) => {
       if (snap.exists()) {
-        const fullContent = await assembleFromCollection();
-        if (fullContent) {
-          onUpdate(fullContent);
+        const data = snap.data();
+        if (data && data.content) {
+          onUpdate(data.content as SiteContent);
         }
       }
     }, (error) => {
