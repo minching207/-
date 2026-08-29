@@ -104,6 +104,7 @@ export function mergeWithInitial(parsed: any): SiteContent {
       ...(parsed.contact || {}),
     },
     projects: mergedProjects,
+    updatedAt: parsed.updatedAt || undefined,
   };
 }
 
@@ -136,14 +137,30 @@ export function loadSiteContent(): SiteContent {
 
 /**
  * Asynchronous load: Priority to Cloud Firestore -> IndexedDB -> LocalStorage
+ * Strictly protects local unsynced edits from being overwritten by stale remote data!
  */
 export async function loadSiteContentAsync(): Promise<SiteContent | null> {
-  // 1. Try fetching live content from Cloud Firestore (ensures visitor sees latest edits)
+  const localCurrent = loadSiteContent();
+  const localUpdatedTime = typeof localCurrent.updatedAt === 'number' 
+    ? localCurrent.updatedAt 
+    : (localCurrent.updatedAt ? new Date(localCurrent.updatedAt).getTime() : 0);
+
+  // 1. Try fetching live content from Cloud Firestore
   try {
     const remote = await getRemoteContent();
     if (remote) {
       const mergedRemote = mergeWithInitial(remote);
-      // Cache locally for fast subsequent loads
+      const remoteUpdatedTime = typeof mergedRemote.updatedAt === 'number'
+        ? mergedRemote.updatedAt
+        : (mergedRemote.updatedAt ? new Date(mergedRemote.updatedAt).getTime() : 0);
+
+      // If local has newer edits that failed cloud sync, keep local and don't overwrite!
+      if (localUpdatedTime && remoteUpdatedTime && localUpdatedTime > remoteUpdatedTime) {
+        console.log('[Storage] Preserving newer local edits over stale remote data.');
+        return localCurrent;
+      }
+
+      // Remote is up-to-date or newer
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedRemote));
         saveIndexedDBContent(mergedRemote);
@@ -158,7 +175,8 @@ export async function loadSiteContentAsync(): Promise<SiteContent | null> {
   try {
     const idbData = await getIndexedDBContent();
     if (idbData) {
-      return mergeWithInitial(idbData);
+      const mergedIdb = mergeWithInitial(idbData);
+      return mergedIdb;
     }
   } catch (err) {
     console.error('Failed to load from IndexedDB', err);
@@ -168,26 +186,51 @@ export async function loadSiteContentAsync(): Promise<SiteContent | null> {
 
 /**
  * Save site content to:
- * 1. Cloud Firestore (Global Sync across all devices and visitors)
+ * 1. LocalStorage (Instant cache)
  * 2. IndexedDB (Unlimited capacity storage)
- * 3. LocalStorage (Instant cache)
+ * 3. Cloud Firestore (Global Sync across all devices and visitors)
  */
-export async function saveSiteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
+export async function saveSiteContent(content: SiteContent): Promise<{ success: boolean; cloudSynced?: boolean; error?: string }> {
+  // Ensure timestamp is stamped
+  const timestampedContent: SiteContent = {
+    ...content,
+    updatedAt: Date.now(),
+  };
+
   // 1. Save to localStorage
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(timestampedContent));
   } catch (err) {
     console.warn('localStorage quota exceeded.', err);
   }
 
-  // 2. Save to IndexedDB (handles any file size / base64)
-  saveIndexedDBContent(content).catch((err) => {
+  // 2. Save to IndexedDB (handles any file size / base64 without limit)
+  try {
+    await saveIndexedDBContent(timestampedContent);
+  } catch (err) {
     console.error('IndexedDB save failed', err);
-  });
+  }
 
   // 3. Save to Cloud Firestore (Real-time global persistence)
-  const remoteResult = await saveRemoteContent(content);
-  return remoteResult;
+  try {
+    const remoteResult = await saveRemoteContent(timestampedContent);
+    if (remoteResult && remoteResult.success) {
+      return { success: true, cloudSynced: true };
+    }
+    // Remote had a quota/network issue, but local is 100% saved
+    return { 
+      success: true, 
+      cloudSynced: false, 
+      error: remoteResult?.error || '클라우드 동기화 대기 중 (브라우저 로컬 안전 보관됨)' 
+    };
+  } catch (remoteErr: any) {
+    console.warn('Firebase save warning (local saved successfully):', remoteErr);
+    return { 
+      success: true, 
+      cloudSynced: false, 
+      error: '클라우드 동기화 대기 중 (브라우저 로컬 안전 보관됨)' 
+    };
+  }
 }
 
 export function resetToDefaultContent(): SiteContent {

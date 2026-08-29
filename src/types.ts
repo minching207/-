@@ -163,4 +163,5 @@ export interface SiteContent {
     availableBadgeText: string;
   };
   projects: Project[];
+  updatedAt?: number | string;
 }

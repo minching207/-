@@ -43,7 +43,19 @@ export default function App() {
     // 2. Real-time listener: When admin edits content, visitors see updates instantly
     const unsubscribe = subscribeToRemoteContent((remoteContent) => {
       if (remoteContent) {
-        setContent(mergeWithInitial(remoteContent));
+        setContent((current) => {
+          const currentUpdated = typeof current?.updatedAt === 'number' 
+            ? current.updatedAt 
+            : (current?.updatedAt ? new Date(current.updatedAt).getTime() : 0);
+          const remoteUpdated = typeof remoteContent?.updatedAt === 'number'
+            ? remoteContent.updatedAt
+            : (remoteContent?.updatedAt ? new Date(remoteContent.updatedAt).getTime() : 0);
+
+          if (currentUpdated && remoteUpdated && currentUpdated > remoteUpdated) {
+            return current; // Keep newer local state
+          }
+          return mergeWithInitial(remoteContent);
+        });
       }
     });
 

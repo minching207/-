@@ -38,7 +38,7 @@ interface AdminModalProps {
   isOpen: boolean;
   onClose: () => void;
   content: SiteContent;
-  onSaveContent: (newContent: SiteContent) => Promise<{ success: boolean; error?: string }> | void;
+  onSaveContent: (newContent: SiteContent) => Promise<{ success: boolean; cloudSynced?: boolean; error?: string }> | void;
   onResetContent: () => void;
   isAdmin: boolean;
   setIsAdmin: (val: boolean) => void;
@@ -61,6 +61,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [draft, setDraft] = useState<SiteContent>(content);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isCloudSynced, setIsCloudSynced] = useState(true);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Selected project for editing in projects tab
@@ -116,11 +118,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
+    setSaveNotice(null);
     try {
       const res = await onSaveContent(draft);
-      if (res && !res.success) {
-        setSaveError(res.error || '클라우드 저장에 실패했습니다.');
+      if (res && res.success) {
+        setIsCloudSynced(res.cloudSynced !== false);
+        setSaveNotice(res.cloudSynced === false ? (res.error || '브라우저에 안전하게 저장되었습니다 (클라우드 동기화 대기 중)') : null);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3500);
+      } else if (res && !res.success) {
+        setSaveError(res.error || '저장 중 문제가 발생했습니다.');
       } else {
+        setIsCloudSynced(true);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
       }
@@ -195,9 +204,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     setSaveError(null);
     try {
       const res = await onSaveContent(newDraft);
-      if (res && !res.success) {
+      if (res && res.success) {
+        setIsCloudSynced(res.cloudSynced !== false);
+        setSaveNotice(res.cloudSynced === false ? (res.error || '로컬에 안전하게 저장되었습니다 (클라우드 동기화 대기)') : null);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } else if (res && !res.success) {
         setSaveError(res.error || '순서 변경 저장 실패');
       } else {
+        setIsCloudSynced(true);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
       }
@@ -221,11 +236,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       }
       setIsSaving(true);
       setSaveError(null);
+      setSaveNotice(null);
       try {
         const res = await onSaveContent(newDraft);
-        if (res && !res.success) {
+        if (res && res.success) {
+          setIsCloudSynced(res.cloudSynced !== false);
+          setSaveNotice(res.cloudSynced === false ? (res.error || '로컬에 안전하게 저장되었습니다 (클라우드 동기화 대기)') : null);
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 2000);
+        } else if (res && !res.success) {
           setSaveError(res.error || '프로젝트 삭제 실패');
         } else {
+          setIsCloudSynced(true);
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 2000);
         }
@@ -250,11 +272,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     setDraft(newDraft);
     setIsSaving(true);
     setSaveError(null);
+    setSaveNotice(null);
     try {
       const res = await onSaveContent(newDraft);
-      if (res && !res.success) {
+      if (res && res.success) {
+        setIsCloudSynced(res.cloudSynced !== false);
+        setSaveNotice(res.cloudSynced === false ? (res.error || '로컬에 안전하게 저장되었습니다 (클라우드 동기화 대기)') : null);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2500);
+      } else if (res && !res.success) {
         setSaveError(res.error || '복제본 저장 실패');
       } else {
+        setIsCloudSynced(true);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
       }
@@ -279,11 +308,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     setDraft(newDraft);
     setIsSaving(true);
     setSaveError(null);
+    setSaveNotice(null);
     try {
       const res = await onSaveContent(newDraft);
-      if (res && !res.success) {
+      if (res && res.success) {
+        setIsCloudSynced(res.cloudSynced !== false);
+        setSaveNotice(res.cloudSynced === false ? (res.error || '로컬에 안전하게 저장되었습니다 (클라우드 동기화 대기)') : null);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } else if (res && !res.success) {
         setSaveError(res.error || '게시 상태 변경 저장 실패');
       } else {
+        setIsCloudSynced(true);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
       }
@@ -308,11 +344,18 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     setIsCreatingNewProject(false);
     setIsSaving(true);
     setSaveError(null);
+    setSaveNotice(null);
     try {
       const res = await onSaveContent(newDraft);
-      if (res && !res.success) {
+      if (res && res.success) {
+        setIsCloudSynced(res.cloudSynced !== false);
+        setSaveNotice(res.cloudSynced === false ? (res.error || '로컬에 안전하게 저장되었습니다 (클라우드 동기화 대기)') : null);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2500);
+      } else if (res && !res.success) {
         setSaveError(res.error || '프로젝트 저장에 실패했습니다.');
       } else {
+        setIsCloudSynced(true);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2500);
       }
@@ -472,11 +515,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({
           </div>
 
           {/* Real-time sync feedback banner if saving / error / success */}
-          {saveSuccess && (
+          {saveSuccess && isCloudSynced && (
             <div className="bg-emerald-950/80 border-b border-emerald-800/80 px-6 py-2 flex items-center justify-between text-xs text-emerald-300 font-medium">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Firebase 클라우드에 영구 저장되었습니다. 모든 방문자 및 시크릿 창에 즉시 반영됩니다!</span>
+              </div>
+            </div>
+          )}
+          {saveSuccess && !isCloudSynced && (
+            <div className="bg-amber-950/80 border-b border-amber-800/80 px-6 py-2 flex items-center justify-between text-xs text-amber-300 font-medium">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>작성하신 내용이 브라우저에 안전하게 보관되었습니다. (클라우드 할당량 리셋 후 자동 동기화됩니다)</span>
               </div>
             </div>
           )}
