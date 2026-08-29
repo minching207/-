@@ -18,6 +18,7 @@ import {
 } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { SiteContent, Project } from '../types';
+import { optimizeDataUrl } from '../utils/imageOptimizer';
 
 // 1. Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -67,63 +68,115 @@ export function dataUrlToBlob(dataUrl: string): Blob | null {
 /**
  * Upload any File, Blob, or raw base64 data directly to Firebase Cloud Storage.
  * Returns the permanent, blazing-fast HTTPS CDN URL.
+ * Includes a per-upload 10s timeout to prevent hanging uploads.
  */
 export async function uploadMediaToStorage(
   fileOrBlobOrDataUrl: File | Blob | string, 
   customFileName?: string,
   folder: string = 'portfolio_media'
 ): Promise<string> {
-  try {
-    let targetBlob: Blob;
-    let ext = 'jpg';
-    let mimeType = 'image/jpeg';
+  const uploadTask = async (): Promise<string> => {
+    try {
+      let targetBlob: Blob;
+      let ext = 'jpg';
+      let mimeType = 'image/jpeg';
 
-    if (typeof fileOrBlobOrDataUrl === 'string') {
-      if (fileOrBlobOrDataUrl.startsWith('http://') || fileOrBlobOrDataUrl.startsWith('https://')) {
-        return fileOrBlobOrDataUrl; // Already a remote URL
+      if (typeof fileOrBlobOrDataUrl === 'string') {
+        if (fileOrBlobOrDataUrl.startsWith('http://') || fileOrBlobOrDataUrl.startsWith('https://')) {
+          return fileOrBlobOrDataUrl; // Already a remote URL
+        }
+        const converted = dataUrlToBlob(fileOrBlobOrDataUrl);
+        if (!converted) {
+          throw new Error('올바르지 않은 이미지 데이터 형식입니다.');
+        }
+        targetBlob = converted;
+        mimeType = targetBlob.type;
+        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
+      } else if (fileOrBlobOrDataUrl instanceof File) {
+        targetBlob = fileOrBlobOrDataUrl;
+        mimeType = fileOrBlobOrDataUrl.type;
+        const fileExt = fileOrBlobOrDataUrl.name.split('.').pop();
+        if (fileExt) ext = fileExt.toLowerCase();
+      } else {
+        targetBlob = fileOrBlobOrDataUrl;
+        mimeType = fileOrBlobOrDataUrl.type || 'image/jpeg';
+        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
       }
-      const converted = dataUrlToBlob(fileOrBlobOrDataUrl);
-      if (!converted) {
-        throw new Error('올바르지 않은 이미지 데이터 형식입니다.');
-      }
-      targetBlob = converted;
-      mimeType = targetBlob.type;
-      ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
-    } else if (fileOrBlobOrDataUrl instanceof File) {
-      targetBlob = fileOrBlobOrDataUrl;
-      mimeType = fileOrBlobOrDataUrl.type;
-      const fileExt = fileOrBlobOrDataUrl.name.split('.').pop();
-      if (fileExt) ext = fileExt.toLowerCase();
-    } else {
-      targetBlob = fileOrBlobOrDataUrl;
-      mimeType = fileOrBlobOrDataUrl.type || 'image/jpeg';
-      ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
+
+      const cleanName = customFileName 
+        ? customFileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+        : `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+      
+      const fullPath = `${folder}/${cleanName}`;
+      const storageRef = ref(storage, fullPath);
+      
+      const snapshot = await uploadBytes(storageRef, targetBlob, {
+        contentType: mimeType || 'image/jpeg',
+      });
+      
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+      return downloadUrl;
+    } catch (error) {
+      console.warn('[Firebase Storage] Upload notice:', error);
+      throw error;
     }
+  };
 
-    const cleanName = customFileName 
-      ? customFileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-      : `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
-    
-    const fullPath = `${folder}/${cleanName}`;
-    const storageRef = ref(storage, fullPath);
-    
-    const snapshot = await uploadBytes(storageRef, targetBlob, {
-      contentType: mimeType || 'image/jpeg',
-    });
-    
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-    return downloadUrl;
-  } catch (error) {
-    console.error('[Firebase Storage] Upload error:', error);
-    throw error;
+  // 10 second timeout per upload attempt
+  const timeout = new Promise<string>((_, reject) => 
+    setTimeout(() => reject(new Error('Storage upload timeout')), 10000)
+  );
+
+  return Promise.race([uploadTask(), timeout]);
+}
+
+/**
+ * Concurrency helper to run async tasks in parallel with a concurrency pool
+ */
+async function asyncPool<T>(
+  poolLimit: number,
+  array: T[],
+  iteratorFn: (item: T) => Promise<any>
+): Promise<void> {
+  const ret: Promise<any>[] = [];
+  const executing: Promise<any>[] = [];
+  for (const item of array) {
+    const p = Promise.resolve().then(() => iteratorFn(item));
+    ret.push(p);
+    if (poolLimit <= array.length) {
+      const e: Promise<any> = p.then(() => executing.splice(executing.indexOf(e), 1));
+      executing.push(e);
+      if (executing.length >= poolLimit) {
+        await Promise.race(executing);
+      }
+    }
   }
+  await Promise.all(ret);
 }
 
 /**
  * Recursively find and migrate any large Base64 media in SiteContent to Firebase Storage URLs
+ * Uses parallel worker pool (concurrency: 5) for ultra-fast non-blocking migration.
  */
 async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent> {
   const cloned: SiteContent = JSON.parse(JSON.stringify(content));
+
+  interface MediaTask {
+    get: () => string | undefined;
+    set: (url: string) => void;
+    tag: string;
+  }
+
+  const tasks: MediaTask[] = [];
+
+  // Hero mockup
+  if (cloned.hero?.heroImage && cloned.hero.heroImage.startsWith('data:')) {
+    tasks.push({
+      get: () => cloned.hero?.heroImage,
+      set: (url) => { if (cloned.hero) cloned.hero.heroImage = url; },
+      tag: `hero_main_${Date.now()}`
+    });
+  }
 
   // Projects
   if (Array.isArray(cloned.projects)) {
@@ -132,20 +185,20 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
 
       // Cover image
       if (proj.coverImage && proj.coverImage.startsWith('data:')) {
-        try {
-          proj.coverImage = await uploadMediaToStorage(proj.coverImage, `cover_${proj.id}_${Date.now()}`);
-        } catch (e) {
-          console.warn(`Cover upload fallback for ${proj.id}:`, e);
-        }
+        tasks.push({
+          get: () => proj.coverImage,
+          set: (url) => { proj.coverImage = url; },
+          tag: `cover_${proj.id}_${Date.now()}`
+        });
       }
 
       // Hero Mockup Image
       if (proj.heroMockupImage && proj.heroMockupImage.startsWith('data:')) {
-        try {
-          proj.heroMockupImage = await uploadMediaToStorage(proj.heroMockupImage, `mockup_${proj.id}_${Date.now()}`);
-        } catch (e) {
-          console.warn(`Mockup upload fallback for ${proj.id}:`, e);
-        }
+        tasks.push({
+          get: () => proj.heroMockupImage,
+          set: (url) => { proj.heroMockupImage = url; },
+          tag: `mockup_${proj.id}_${Date.now()}`
+        });
       }
 
       // Banner variations
@@ -153,9 +206,11 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
         for (let bIdx = 0; bIdx < proj.bannerVariations.length; bIdx++) {
           const banner = proj.bannerVariations[bIdx];
           if (banner.imageUrl && banner.imageUrl.startsWith('data:')) {
-            try {
-              banner.imageUrl = await uploadMediaToStorage(banner.imageUrl, `banner_${proj.id}_${bIdx}_${Date.now()}`);
-            } catch (e) {}
+            tasks.push({
+              get: () => banner.imageUrl,
+              set: (url) => { banner.imageUrl = url; },
+              tag: `banner_${proj.id}_${bIdx}_${Date.now()}`
+            });
           }
         }
       }
@@ -165,9 +220,11 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
         for (let sIdx = 0; sIdx < proj.snsSlides.length; sIdx++) {
           const slide = proj.snsSlides[sIdx];
           if (slide.imageUrl && slide.imageUrl.startsWith('data:')) {
-            try {
-              slide.imageUrl = await uploadMediaToStorage(slide.imageUrl, `sns_${proj.id}_${sIdx}_${Date.now()}`);
-            } catch (e) {}
+            tasks.push({
+              get: () => slide.imageUrl,
+              set: (url) => { slide.imageUrl = url; },
+              tag: `sns_${proj.id}_${sIdx}_${Date.now()}`
+            });
           }
         }
       }
@@ -177,14 +234,18 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
         for (let vIdx = 0; vIdx < proj.videoVariations.length; vIdx++) {
           const vVar = proj.videoVariations[vIdx];
           if (vVar.videoUrl && vVar.videoUrl.startsWith('data:')) {
-            try {
-              vVar.videoUrl = await uploadMediaToStorage(vVar.videoUrl, `video_${proj.id}_${vIdx}_${Date.now()}`);
-            } catch (e) {}
+            tasks.push({
+              get: () => vVar.videoUrl,
+              set: (url) => { vVar.videoUrl = url; },
+              tag: `video_${proj.id}_${vIdx}_${Date.now()}`
+            });
           }
           if (vVar.coverImage && vVar.coverImage.startsWith('data:')) {
-            try {
-              vVar.coverImage = await uploadMediaToStorage(vVar.coverImage, `vcover_${proj.id}_${vIdx}_${Date.now()}`);
-            } catch (e) {}
+            tasks.push({
+              get: () => vVar.coverImage,
+              set: (url) => { vVar.coverImage = url; },
+              tag: `vcover_${proj.id}_${vIdx}_${Date.now()}`
+            });
           }
         }
       }
@@ -195,28 +256,47 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
           const sec = proj.sections[sIdx];
 
           if (sec.imageUrl && sec.imageUrl.startsWith('data:')) {
-            try {
-              sec.imageUrl = await uploadMediaToStorage(sec.imageUrl, `sec_${proj.id}_${sIdx}_${Date.now()}`);
-            } catch (e) {
-              console.warn('Section imageUrl upload fallback:', e);
-            }
+            tasks.push({
+              get: () => sec.imageUrl,
+              set: (url) => { sec.imageUrl = url; },
+              tag: `sec_${proj.id}_${sIdx}_${Date.now()}`
+            });
           }
 
           if (Array.isArray(sec.images)) {
             for (let iIdx = 0; iIdx < sec.images.length; iIdx++) {
               const img = sec.images[iIdx];
               if (img && img.startsWith('data:')) {
-                try {
-                  sec.images[iIdx] = await uploadMediaToStorage(img, `slice_${proj.id}_${sIdx}_${iIdx}_${Date.now()}`);
-                } catch (e) {
-                  console.warn('Section slice image upload fallback:', e);
-                }
+                tasks.push({
+                  get: () => sec.images[iIdx],
+                  set: (url) => { sec.images[iIdx] = url; },
+                  tag: `slice_${proj.id}_${sIdx}_${iIdx}_${Date.now()}`
+                });
               }
             }
           }
         }
       }
     }
+  }
+
+  if (tasks.length > 0) {
+    await asyncPool(6, tasks, async (task) => {
+      const val = task.get();
+      if (!val || !val.startsWith('data:')) return;
+      try {
+        const url = await uploadMediaToStorage(val, task.tag);
+        task.set(url);
+      } catch (err) {
+        // If storage upload fails, compress base64 dataUrl so Firestore document size won't exceed limit
+        try {
+          const compressed = await optimizeDataUrl(val, 1600, 0.82);
+          task.set(compressed);
+        } catch (compErr) {
+          console.warn('Fallback compression notice:', compErr);
+        }
+      }
+    });
   }
 
   return cloned;
@@ -514,14 +594,14 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
     }
   };
 
-  // Timeout promise (12 seconds)
+  // Timeout promise (30 seconds for complete safety with large asset uploads)
   const timeoutPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
     setTimeout(() => {
       resolve({ 
         success: false, 
-        error: '클라우드 네트워크 응답 시간이 초과되었습니다. 브라우저 로컬(IndexedDB)에는 안전하게 저장되었습니다.' 
+        error: '클라우드 네트워크 응답 시간이 지연되었습니다. 브라우저 로컬(IndexedDB)에는 안전하게 저장되었습니다.' 
       });
-    }, 12000);
+    }, 30000);
   });
 
   return Promise.race([savePromise(), timeoutPromise]);
