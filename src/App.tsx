@@ -51,8 +51,10 @@ export default function App() {
             ? remoteContent.updatedAt
             : (remoteContent?.updatedAt ? new Date(remoteContent.updatedAt).getTime() : 0);
 
-          if (currentUpdated && remoteUpdated && currentUpdated > remoteUpdated) {
-            return current; // Keep newer local state
+          // If local has newer unsynced edits, protect local state from being overwritten
+          if (currentUpdated && (!remoteUpdated || currentUpdated >= remoteUpdated)) {
+            console.log('[App] Preserving active local edits over remote data');
+            return current;
           }
           return mergeWithInitial(remoteContent);
         });
@@ -67,12 +69,20 @@ export default function App() {
     document.title = `${content.meta.designerName} | ${content.meta.designerTitle}`;
   }, [content]);
 
-  const handleSaveContent = async (newContent: SiteContent): Promise<{ success: boolean; error?: string }> => {
-    setContent(newContent);
-    const result = await saveSiteContent(newContent);
-    // If the currently viewed project is updated, sync it
+  const handleSaveContent = async (newContent: SiteContent): Promise<{ success: boolean; cloudSynced?: boolean; error?: string }> => {
+    const timestamped: SiteContent = {
+      ...newContent,
+      updatedAt: Date.now(),
+    };
+    // Update active React state immediately so the screen reflects changes in real time
+    setContent(timestamped);
+    
+    // Save to LocalStorage + IndexedDB + Firestore
+    const result = await saveSiteContent(timestamped);
+    
+    // If the currently viewed project in the modal is updated, sync it immediately
     if (selectedProject) {
-      const updated = newContent.projects.find((p) => p.id === selectedProject.id);
+      const updated = timestamped.projects.find((p) => p.id === selectedProject.id);
       if (updated) setSelectedProject(updated);
     }
     return result;

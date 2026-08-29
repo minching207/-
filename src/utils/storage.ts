@@ -155,7 +155,7 @@ export async function loadSiteContentAsync(): Promise<SiteContent | null> {
         : (mergedRemote.updatedAt ? new Date(mergedRemote.updatedAt).getTime() : 0);
 
       // If local has newer edits that failed cloud sync, keep local and don't overwrite!
-      if (localUpdatedTime && remoteUpdatedTime && localUpdatedTime > remoteUpdatedTime) {
+      if (localUpdatedTime && (!remoteUpdatedTime || localUpdatedTime >= remoteUpdatedTime)) {
         console.log('[Storage] Preserving newer local edits over stale remote data.');
         return localCurrent;
       }

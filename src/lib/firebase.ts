@@ -299,6 +299,7 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
         about: metaData.about,
         contact: metaData.contact,
         projects: resolvedProjects,
+        updatedAt: metaData.updatedAt || undefined,
       };
 
       return assembledContent as SiteContent;
