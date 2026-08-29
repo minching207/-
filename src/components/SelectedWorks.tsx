@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   ArrowUpRight, 
   Smartphone, 
+  Package,
   Instagram, 
   Layout, 
   PlayCircle, 
@@ -34,6 +35,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
   const categories: CategoryTab[] = [
     { id: 'ALL', label: '전체', subLabel: 'ALL', icon: Layers },
     { id: 'DETAIL PAGE', label: '상세페이지', subLabel: 'DETAIL PAGE', icon: Smartphone },
+    { id: 'PRODUCT', label: '제품', subLabel: 'PRODUCT', icon: Package },
     { id: 'SNS CONTENT', label: 'SNS 콘텐츠', subLabel: 'SNS CONTENT', icon: Instagram },
     { id: 'MAIN BANNER', label: '배너', subLabel: 'BANNER', icon: Layout },
     { id: 'VIDEO & MOTION', label: '영상·모션', subLabel: 'VIDEO & MOTION', icon: PlayCircle },
@@ -48,6 +50,9 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
     
     if (activeFilter === 'DETAIL PAGE') {
       return cat.includes('DETAIL') || type === 'detail-page';
+    }
+    if (activeFilter === 'PRODUCT') {
+      return cat.includes('PRODUCT') || cat.includes('제품') || type === 'product';
     }
     if (activeFilter === 'SNS CONTENT') {
       return cat.includes('SNS') || type === 'sns-content';
@@ -95,6 +100,13 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
         label: '상세페이지 · DETAIL PAGE',
         icon: Smartphone,
         colorClass: 'bg-[#FDF2F8] text-[#DB2777] border-[#FBCFE8]',
+      };
+    }
+    if (cat.includes('PRODUCT') || cat.includes('제품') || type === 'product') {
+      return {
+        label: '제품 · PRODUCT',
+        icon: Package,
+        colorClass: 'bg-amber-50 text-amber-700 border-amber-200',
       };
     }
     if (cat.includes('SNS') || type === 'sns-content') {
@@ -158,6 +170,7 @@ export const SelectedWorks: React.FC<SelectedWorksProps> = ({ projects, onSelect
                 const pCat = (p.category || '').toUpperCase();
                 const pType = p.projectType || '';
                 if (cat.id === 'DETAIL PAGE') return pCat.includes('DETAIL') || pType === 'detail-page';
+                if (cat.id === 'PRODUCT') return pCat.includes('PRODUCT') || pCat.includes('제품') || pType === 'product';
                 if (cat.id === 'SNS CONTENT') return pCat.includes('SNS') || pType === 'sns-content';
                 if (cat.id === 'MAIN BANNER') return pCat.includes('BANNER') || pType === 'main-banner';
                 if (cat.id === 'VIDEO & MOTION') return pCat.includes('VIDEO') || pCat.includes('MOTION') || pType === 'video-motion';

@@ -53,8 +53,8 @@ export interface Project {
   id: string;
   number: string; // e.g. "01"
   title: string;
-  category: string; // e.g. "DETAIL PAGE", "SNS CONTENT", "MAIN BANNER", "VIDEO & MOTION"
-  projectType?: 'detail-page' | 'sns-content' | 'main-banner' | 'video-motion';
+  category: string; // e.g. "DETAIL PAGE", "PRODUCT", "SNS CONTENT", "MAIN BANNER", "VIDEO & MOTION"
+  projectType?: 'detail-page' | 'product' | 'sns-content' | 'main-banner' | 'video-motion';
   summary: string;
   coverImage: string;
   heroMockupImage?: string;

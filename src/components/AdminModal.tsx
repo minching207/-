@@ -1373,6 +1373,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
           <div className="flex gap-1.5 mb-1.5 flex-wrap">
             {[
               { label: '상세페이지', val: 'DETAIL PAGE', type: 'detail-page' as const },
+              { label: '제품', val: 'PRODUCT', type: 'product' as const },
               { label: 'SNS 콘텐츠', val: 'SNS CONTENT', type: 'sns-content' as const },
               { label: '배너', val: 'BANNER', type: 'main-banner' as const },
               { label: '영상·모션', val: 'VIDEO & MOTION', type: 'video-motion' as const },
@@ -1400,7 +1401,7 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value })}
             className="w-full px-3 py-2 rounded bg-[#242422] border border-[#3A3A36] text-white text-xs"
-            placeholder="e.g. DETAIL PAGE, SNS CONTENT, BANNER, VIDEO & MOTION"
+            placeholder="e.g. DETAIL PAGE, PRODUCT, SNS CONTENT, BANNER, VIDEO & MOTION"
           />
         </div>
       </div>

@@ -23,6 +23,14 @@ export const Hero: React.FC<HeroProps> = ({ content, onSelectProject }) => {
         dot: 'bg-[#EC4899]'
       };
     }
+    if (lower.includes('제품') || lower.includes('product')) {
+      return {
+        bg: 'bg-amber-50',
+        text: 'text-amber-700',
+        border: 'border-amber-200',
+        dot: 'bg-amber-500'
+      };
+    }
     if (lower.includes('sns') || lower.includes('콘텐츠') || lower.includes('카드뉴스') || lower.includes('content')) {
       return {
         bg: 'bg-rose-50',
