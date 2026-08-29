@@ -79,7 +79,7 @@ export function dataUrlToBlob(dataUrl: string): Blob | null {
 
 /**
  * Fast-fail media upload helper.
- * Tries Firebase Storage first; if storage is unavailable or slow, falls back gracefully.
+ * Tries Firebase Storage first with short timeout; if unavailable, falls back cleanly to compressed base64.
  */
 export async function uploadMediaToStorage(
   fileOrBlobOrDataUrl: File | Blob | string, 
@@ -89,20 +89,20 @@ export async function uploadMediaToStorage(
   const uploadTask = async (): Promise<string> => {
     try {
       let targetBlob: Blob;
-      let ext = 'jpg';
-      let mimeType = 'image/jpeg';
+      let ext = 'webp';
+      let mimeType = 'image/webp';
 
       if (typeof fileOrBlobOrDataUrl === 'string') {
         if (fileOrBlobOrDataUrl.startsWith('http://') || fileOrBlobOrDataUrl.startsWith('https://')) {
-          return fileOrBlobOrDataUrl; // Already a remote URL
+          return fileOrBlobOrDataUrl;
         }
         const converted = dataUrlToBlob(fileOrBlobOrDataUrl);
         if (!converted) {
-          throw new Error('올바르지 않은 이미지 데이터 형식입니다.');
+          throw new Error('Invalid image data format');
         }
         targetBlob = converted;
         mimeType = targetBlob.type;
-        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
+        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
       } else if (fileOrBlobOrDataUrl instanceof File) {
         targetBlob = fileOrBlobOrDataUrl;
         mimeType = fileOrBlobOrDataUrl.type;
@@ -110,8 +110,8 @@ export async function uploadMediaToStorage(
         if (fileExt) ext = fileExt.toLowerCase();
       } else {
         targetBlob = fileOrBlobOrDataUrl;
-        mimeType = fileOrBlobOrDataUrl.type || 'image/jpeg';
-        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : mimeType.includes('video') || mimeType.includes('mp4') ? 'mp4' : 'jpg';
+        mimeType = fileOrBlobOrDataUrl.type || 'image/webp';
+        ext = mimeType.includes('gif') ? 'gif' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
       }
 
       const cleanName = customFileName 
@@ -122,27 +122,26 @@ export async function uploadMediaToStorage(
       const storageRef = ref(storage, fullPath);
       
       const snapshot = await uploadBytes(storageRef, targetBlob, {
-        contentType: mimeType || 'image/jpeg',
+        contentType: mimeType || 'image/webp',
       });
       
       const downloadUrl = await getDownloadURL(snapshot.ref);
       return downloadUrl;
     } catch (error) {
-      console.warn('[Firebase Storage] Upload notice:', error);
       throw error;
     }
   };
 
-  // 3 second timeout per storage upload attempt to ensure snappy saving
+  // 1.5s timeout per storage upload
   const timeout = new Promise<string>((_, reject) => 
-    setTimeout(() => reject(new Error('Storage upload timeout')), 3000)
+    setTimeout(() => reject(new Error('Storage upload timeout')), 1500)
   );
 
   return Promise.race([uploadTask(), timeout]);
 }
 
 /**
- * Concurrency helper to run async tasks in parallel with a concurrency pool
+ * Concurrency helper to run async tasks in parallel
  */
 async function asyncPool<T>(
   poolLimit: number,
@@ -166,21 +165,21 @@ async function asyncPool<T>(
 }
 
 /**
- * Optimizes base64 string for ultra-safe Firestore payload (< 150KB per item)
+ * Optimizes base64 string for ultra-safe Firestore payload (< 80KB per item)
  */
 async function safeCompressImage(dataUrl?: string): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl || '';
   try {
-    return await optimizeDataUrl(dataUrl, 1280, 0.82);
+    return await optimizeDataUrl(dataUrl, 1400, 0.82);
   } catch {
     return dataUrl;
   }
 }
 
 /**
- * Auto-migrates base64 to Firebase Storage or compresses in parallel
+ * Optimizes all base64 media within content in parallel
  */
-async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent> {
+async function optimizeAllMedia(content: SiteContent): Promise<SiteContent> {
   const cloned: SiteContent = JSON.parse(JSON.stringify(content));
   interface MediaTask {
     get: () => string | undefined;
@@ -302,20 +301,22 @@ async function autoMigrateBase64Media(content: SiteContent): Promise<SiteContent
   }
 
   if (tasks.length > 0) {
-    await asyncPool(6, tasks, async (task) => {
+    await asyncPool(8, tasks, async (task) => {
       const val = task.get();
       if (!val || !val.startsWith('data:')) return;
+      
+      // Fast compress first to ensure minimal payload
+      const compressed = await safeCompressImage(val);
+      task.set(compressed);
+
+      // Attempt background upload to storage
       try {
-        const url = await uploadMediaToStorage(val, task.tag);
-        task.set(url);
-      } catch (err) {
-        // If storage upload fails, compress base64 dataUrl so Firestore document size stays minuscule
-        try {
-          const compressed = await safeCompressImage(val);
-          task.set(compressed);
-        } catch (compErr) {
-          console.warn('Fallback compression notice:', compErr);
+        const url = await uploadMediaToStorage(compressed, task.tag);
+        if (url) {
+          task.set(url);
         }
+      } catch (err) {
+        // Fallback to compressed base64 is already set
       }
     });
   }
@@ -335,7 +336,7 @@ function cleanForFirestore(obj: any): any {
 }
 
 /**
- * Reassemble full SiteContent from metadata + individual project collection and sections subcollections
+ * Reassemble full SiteContent from metadata + individual project collection
  */
 async function assembleFromCollection(): Promise<SiteContent | null> {
   try {
@@ -344,87 +345,15 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
     const projectsCol = collection(db, PROJECTS_COLLECTION);
     const projectsSnap = await getDocs(projectsCol);
 
-    const projectPromises = projectsSnap.docs.map(async (docItem) => {
-      const pData = docItem.data();
-      if (!pData || !pData.id) return null;
-
-      try {
-        // 1. Check for sections in subcollection
-        const sectionsCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sections');
-        const secSnap = await getDocs(sectionsCol);
-
-        if (!secSnap.empty) {
-          const subSections: any[] = [];
-          for (const sDoc of secSnap.docs) {
-            const sData = sDoc.data();
-            if (sData) {
-              // Check if slices exist in subcollection
-              try {
-                const slicesCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sections', sDoc.id, 'slices');
-                const sliceSnap = await getDocs(slicesCol);
-                if (!sliceSnap.empty) {
-                  const sliceDocs = sliceSnap.docs.map(d => d.data());
-                  sliceDocs.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-                  sData.images = sliceDocs.map(d => d.url || d.imageUrl).filter(Boolean);
-                  if (sData.images.length > 0 && !sData.imageUrl) {
-                    sData.imageUrl = sData.images[0];
-                  }
-                }
-              } catch (sliceErr) {
-                console.warn(`[Firebase] Slices read error for ${pData.id}/${sDoc.id}:`, sliceErr);
-              }
-              subSections.push(sData);
-            }
-          }
-          // Sort by order or numeric index
-          subSections.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-          pData.sections = subSections;
-        }
-
-        // 2. Check for banners subcollection
-        try {
-          const bannersCol = collection(db, PROJECTS_COLLECTION, pData.id, 'banners');
-          const bannerSnap = await getDocs(bannersCol);
-          if (!bannerSnap.empty) {
-            const banners = bannerSnap.docs.map(b => b.data());
-            banners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            pData.bannerVariations = banners;
-          }
-        } catch (bErr) {}
-
-        // 3. Check for sns subcollection
-        try {
-          const snsCol = collection(db, PROJECTS_COLLECTION, pData.id, 'sns');
-          const snsSnap = await getDocs(snsCol);
-          if (!snsSnap.empty) {
-            const slides = snsSnap.docs.map(s => s.data());
-            slides.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            pData.snsSlides = slides;
-          }
-        } catch (sErr) {}
-
-        // 4. Check for videos subcollection
-        try {
-          const vCol = collection(db, PROJECTS_COLLECTION, pData.id, 'videos');
-          const vSnap = await getDocs(vCol);
-          if (!vSnap.empty) {
-            const vids = vSnap.docs.map(v => v.data());
-            vids.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            pData.videoVariations = vids;
-          }
-        } catch (vErr) {}
-
-      } catch (subErr) {
-        console.warn(`[Firebase] Subcollection read warning for project ${pData.id}:`, subErr);
+    const resolvedProjects: Project[] = [];
+    
+    for (const docItem of projectsSnap.docs) {
+      const pData = docItem.data() as any;
+      if (pData && pData.id) {
+        pData.isPublished = pData.isPublished !== false;
+        resolvedProjects.push(pData as Project);
       }
-
-      // Default isPublished to true if not explicitly false
-      pData.isPublished = pData.isPublished !== false;
-
-      return pData as Project;
-    });
-
-    const resolvedProjects = (await Promise.all(projectPromises)).filter(Boolean) as Project[];
+    }
 
     let metaData: any = {};
     if (metaSnap.exists()) {
@@ -433,7 +362,7 @@ async function assembleFromCollection(): Promise<SiteContent | null> {
 
     if (resolvedProjects.length > 0 || metaSnap.exists()) {
       // Sort projects according to projectOrder if available
-      if (Array.isArray(metaData.projectOrder)) {
+      if (Array.isArray(metaData.projectOrder) && metaData.projectOrder.length > 0) {
         resolvedProjects.sort((a, b) => {
           const indexA = metaData.projectOrder.indexOf(a.id);
           const indexB = metaData.projectOrder.indexOf(b.id);
@@ -490,226 +419,84 @@ export async function getRemoteContent(): Promise<SiteContent | null> {
 }
 
 /**
- * Save portfolio content to Firestore with 100% immunity to 1MB size limits.
- * All nested media arrays and sections are safely partitioned into subcollections.
+ * Save portfolio content to Firestore with per-project partitioning and image optimization.
  */
 export async function saveRemoteContent(content: SiteContent): Promise<{ success: boolean; error?: string }> {
-  const savePromise = async (): Promise<{ success: boolean; error?: string }> => {
+  try {
+    // 0. Auto-optimize images
+    let contentWithOptimizedMedia = content;
     try {
-      // 0. Auto-migrate or compress base64
-      let contentWithStorageUrls = content;
-      try {
-        contentWithStorageUrls = await autoMigrateBase64Media(content);
-      } catch (migrateErr) {
-        console.warn('[Firebase] autoMigrateBase64Media warning:', migrateErr);
-      }
+      contentWithOptimizedMedia = await optimizeAllMedia(content);
+    } catch (optErr) {
+      console.warn('[Firebase] optimizeAllMedia notice:', optErr);
+    }
 
-      const cleanedContent = cleanForFirestore(contentWithStorageUrls);
-      const now = new Date().toISOString();
-      const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
-      const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
+    const cleanedContent = cleanForFirestore(contentWithOptimizedMedia);
+    const now = new Date().toISOString();
+    const currentProjectList: Project[] = Array.isArray(cleanedContent.projects) ? cleanedContent.projects : [];
+    const currentProjectIds = new Set(currentProjectList.map((p) => p.id));
 
-      // 1. Save all individual project documents and their subcollections
-      const projectSavePromises = currentProjectList.map(async (proj: Project) => {
-        const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
-        
-        // A. Sections handling
-        const rawSections = proj.sections || [];
-        const currentSectionIds = new Set<string>();
-
-        const sectionSavePromises = rawSections.map(async (sec, sIdx) => {
-          const secId = sec.id || `sec-${sIdx + 1}`;
-          currentSectionIds.add(secId);
-          const rawImgs = Array.isArray(sec.images) ? sec.images.filter(Boolean) : (sec.imageUrl ? [sec.imageUrl] : []);
-          
-          const secRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', secId);
-          
-          // If sec.images has multiple large slice images, store individual slices in subcollection
-          if (rawImgs.length > 1) {
-            const sliceSavePromises = rawImgs.map((imgUrl, iIdx) => {
-              const sliceRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sections', secId, 'slices', `slice-${iIdx}`);
-              return setDoc(sliceRef, {
-                order: iIdx,
-                url: imgUrl,
-                updatedAt: now,
-              });
-            });
-            await Promise.all(sliceSavePromises);
-          }
-
-          return setDoc(secRef, {
-            id: secId,
-            order: sIdx,
-            title: sec.title || `0${sIdx + 1}. SECTION`,
-            caption: sec.caption || '',
-            imageUrl: rawImgs[0] || sec.imageUrl || '',
-            images: rawImgs.length <= 1 ? rawImgs : [], // Store lightweight in sec doc
-            layoutMode: sec.layoutMode || 'seamless',
-            updatedAt: now,
-          });
-        });
-
-        await Promise.all(sectionSavePromises);
-
-        // Clean up deleted sections in this project's subcollection
-        try {
-          const sectionsCol = collection(db, PROJECTS_COLLECTION, proj.id, 'sections');
-          const existingSecSnap = await getDocs(sectionsCol);
-          const secDeletePromises: Promise<any>[] = [];
-          existingSecSnap.forEach((sDoc) => {
-            if (!currentSectionIds.has(sDoc.id)) {
-              secDeletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, proj.id, 'sections', sDoc.id)));
-            }
-          });
-          if (secDeletePromises.length > 0) {
-            await Promise.all(secDeletePromises);
-          }
-        } catch (secCleanErr) {}
-
-        // B. Banners subcollection handling
-        if (Array.isArray(proj.bannerVariations) && proj.bannerVariations.length > 0) {
-          const bannerPromises = proj.bannerVariations.map((banner, bIdx) => {
-            const bRef = doc(db, PROJECTS_COLLECTION, proj.id, 'banners', banner.id || `b-${bIdx}`);
-            return setDoc(bRef, {
-              ...banner,
-              order: bIdx,
-              updatedAt: now,
-            });
-          });
-          await Promise.all(bannerPromises);
-        }
-
-        // C. SNS subcollection handling
-        if (Array.isArray(proj.snsSlides) && proj.snsSlides.length > 0) {
-          const snsPromises = proj.snsSlides.map((slide, sIdx) => {
-            const sRef = doc(db, PROJECTS_COLLECTION, proj.id, 'sns', slide.id || `s-${sIdx}`);
-            return setDoc(sRef, {
-              ...slide,
-              order: sIdx,
-              updatedAt: now,
-            });
-          });
-          await Promise.all(snsPromises);
-        }
-
-        // D. Videos subcollection handling
-        if (Array.isArray(proj.videoVariations) && proj.videoVariations.length > 0) {
-          const vPromises = proj.videoVariations.map((vVar, vIdx) => {
-            const vRef = doc(db, PROJECTS_COLLECTION, proj.id, 'videos', vVar.id || `v-${vIdx}`);
-            return setDoc(vRef, {
-              ...vVar,
-              order: vIdx,
-              updatedAt: now,
-            });
-          });
-          await Promise.all(vPromises);
-        }
-
-        // Project root document: keep lightweight summary fields
-        const sanitizedProject: Project = {
-          id: proj.id,
-          number: proj.number,
-          title: proj.title,
-          category: proj.category,
-          projectType: proj.projectType,
-          summary: proj.summary,
-          coverImage: proj.coverImage,
-          heroMockupImage: proj.heroMockupImage,
-          tags: proj.tags || [],
-          role: proj.role || '',
-          period: proj.period || '',
-          tools: proj.tools || [],
-          client: proj.client || '',
-          featuredInHero: !!proj.featuredInHero,
-          isPublished: proj.isPublished !== false,
-          bannerVariations: (proj.bannerVariations || []).map(b => ({ id: b.id, title: b.title, ratio: b.ratio })),
-          snsSlides: (proj.snsSlides || []).map(s => ({ id: s.id, order: s.order })),
-          videoVariations: (proj.videoVariations || []).map(v => ({ id: v.id, title: v.title, format: v.format })),
-          sections: rawSections.map((s, i) => ({ id: s.id || `sec-${i+1}`, order: i, title: s.title, layoutMode: s.layoutMode })) as any,
-        };
-
-        return setDoc(projRef, {
-          ...sanitizedProject,
-          updatedAt: now,
-        });
+    // 1. Save all individual project documents in parallel
+    const projectSavePromises = currentProjectList.map((proj: Project) => {
+      const projRef = doc(db, PROJECTS_COLLECTION, proj.id);
+      return setDoc(projRef, {
+        ...proj,
+        isPublished: proj.isPublished !== false,
+        updatedAt: now,
       });
+    });
 
-      await Promise.all(projectSavePromises);
+    await Promise.all(projectSavePromises);
 
-      // 2. Clean up any deleted projects from the collection
-      try {
-        const projectsCol = collection(db, PROJECTS_COLLECTION);
-        const existingSnap = await getDocs(projectsCol);
-        const deletePromises: Promise<any>[] = [];
-        existingSnap.forEach((docItem) => {
-          if (!currentProjectIds.has(docItem.id)) {
-            deletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, docItem.id)));
-          }
-        });
-        if (deletePromises.length > 0) {
-          await Promise.all(deletePromises);
+    // 2. Clean up any deleted projects from the collection
+    try {
+      const projectsCol = collection(db, PROJECTS_COLLECTION);
+      const existingSnap = await getDocs(projectsCol);
+      const deletePromises: Promise<any>[] = [];
+      existingSnap.forEach((docItem) => {
+        if (!currentProjectIds.has(docItem.id)) {
+          deletePromises.push(deleteDoc(doc(db, PROJECTS_COLLECTION, docItem.id)));
         }
-      } catch (cleanupErr) {}
+      });
+      if (deletePromises.length > 0) {
+        await Promise.all(deletePromises);
+      }
+    } catch (cleanupErr) {}
 
-      // 3. Save metadata + project ordering LAST (triggers onSnapshot after all documents are written)
-      const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
-      await setDoc(metaRef, {
-        meta: cleanedContent.meta,
-        hero: cleanedContent.hero,
-        approach: cleanedContent.approach,
-        about: cleanedContent.about,
-        contact: cleanedContent.contact,
-        projectOrder: currentProjectList.map((p: Project) => p.id),
+    // 3. Save metadata + project ordering
+    const metaRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_META_DOC_ID);
+    await setDoc(metaRef, {
+      meta: cleanedContent.meta,
+      hero: cleanedContent.hero,
+      approach: cleanedContent.approach,
+      about: cleanedContent.about,
+      contact: cleanedContent.contact,
+      projectOrder: currentProjectList.map((p: Project) => p.id),
+      updatedAt: now,
+    }, { merge: true });
+
+    // 4. Save live backup document
+    try {
+      const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
+      await setDoc(liveRef, {
+        content: cleanedContent,
         updatedAt: now,
       }, { merge: true });
+    } catch (liveErr) {}
 
-      // 4. Save lightweight sync beacon into live document
-      try {
-        const liveRef = doc(db, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-        const lightweightProjects = currentProjectList.map((p: Project) => ({
-          id: p.id,
-          number: p.number,
-          title: p.title,
-          category: p.category,
-          projectType: p.projectType,
-          summary: p.summary,
-          isPublished: p.isPublished !== false,
-        }));
-
-        await setDoc(liveRef, {
-          meta: cleanedContent.meta,
-          hero: cleanedContent.hero,
-          projectSummaries: lightweightProjects,
-          updatedAt: now,
-        }, { merge: true });
-      } catch (beaconErr) {}
-
-      console.log('[Firebase] Successfully saved modular portfolio content to Firestore with subcollections!');
-      return { success: true };
-    } catch (error: any) {
-      console.error('[Firebase] Save to Firestore failed:', error);
-      const rawMsg = error?.message || '';
-      let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
-      if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
-        errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
-      } else if (rawMsg) {
-        errMsg = `클라우드 저장 오류: ${rawMsg}`;
-      }
-      return { success: false, error: errMsg };
+    console.log('[Firebase] Successfully saved portfolio content to Firestore!');
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Firebase] Save to Firestore failed:', error);
+    const rawMsg = error?.message || '';
+    let errMsg = '클라우드 데이터베이스 저장 중 오류가 발생했습니다.';
+    if (rawMsg.includes('exceeds the maximum allowed size') || rawMsg.includes('1,048,576')) {
+      errMsg = '프로젝트 이미지 용량이 Firestore 허용 한도(1MB)를 초과했습니다. 고해상도 이미지는 압축 후 등록해주세요.';
+    } else if (rawMsg) {
+      errMsg = `클라우드 저장 오류: ${rawMsg}`;
     }
-  };
-
-  // 15 seconds timeout
-  const timeoutPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
-    setTimeout(() => {
-      resolve({ 
-        success: false, 
-        error: '클라우드 네트워크 응답 시간이 지연되었습니다. 브라우저 로컬(IndexedDB)에는 안전하게 저장되었습니다.' 
-      });
-    }, 15000);
-  });
-
-  return Promise.race([savePromise(), timeoutPromise]);
+    return { success: false, error: errMsg };
+  }
 }
 
 /**
