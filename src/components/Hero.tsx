@@ -184,15 +184,19 @@ export const Hero: React.FC<HeroProps> = ({ content, onSelectProject }) => {
 
             {/* Main Featured Project Showcase Image Frame */}
             <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[16/10] sm:aspect-[16/9] border border-slate-100">
-              <img
-                src={featuredProject?.coverImage || 'https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?auto=format&fit=crop&w=1200&q=85'}
-                alt={featuredProject?.title || 'Featured Work'}
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1200&q=85';
-                }}
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              />
+              {featuredProject?.coverImage ? (
+                <img
+                  key={featuredProject.id || featuredProject.coverImage}
+                  src={featuredProject.coverImage}
+                  alt={featuredProject.title || 'Featured Work'}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 flex items-center justify-center">
+                  <span className="text-xs text-slate-500 font-mono">No Image</span>
+                </div>
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/90 via-[#0F172A]/25 to-transparent flex flex-col justify-end p-5 sm:p-6 text-white">
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                   <span className="text-[10px] uppercase font-mono tracking-widest px-2.5 py-0.5 rounded-full bg-[#EC4899] text-white font-bold">

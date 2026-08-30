@@ -29,37 +29,72 @@ import { InitialPreloader } from './components/InitialPreloader';
 
 export default function App() {
   const [content, setContent] = useState<SiteContent>(loadSiteContent);
-  const [isHydrated, setIsHydrated] = useState<boolean>(() => hasSavedLocalContent());
-  const [isLoading, setIsLoading] = useState<boolean>(() => !hasSavedLocalContent());
+  const [isHydrated, setIsHydrated] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isResumeOpen, setIsResumeOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(checkAdminSession);
+
+  // Helper to preload the hero showcase image before lifting the loading curtain
+  const preloadHeroImage = (imgUrl?: string): Promise<void> => {
+    if (!imgUrl) return Promise.resolve();
+    return new Promise((resolve) => {
+      const img = new Image();
+      let finished = false;
+      const done = () => {
+        if (!finished) {
+          finished = true;
+          resolve();
+        }
+      };
+      img.onload = done;
+      img.onerror = done;
+      img.src = imgUrl;
+      if (img.complete) {
+        done();
+      }
+      // Safety cap for image preload
+      setTimeout(done, 1200);
+    });
+  };
 
   // 1. Hydrate from Cloud Firestore & IndexedDB on initial mount
   useEffect(() => {
     let isMounted = true;
     let hasAppliedRemote = false;
 
-    // Safety timeout: 5s buffer to ensure preloader never hangs permanently even on completely offline connections
+    // Safety timeout: Ensure preloader never hangs permanently even on completely offline connections
     const safetyTimeout = setTimeout(() => {
       if (isMounted && !hasAppliedRemote) {
         setIsHydrated(true);
         setIsLoading(false);
       }
-    }, 5000);
+    }, 4500);
 
-    const applyContent = (newContent: SiteContent) => {
+    const applyContent = async (newContent: SiteContent) => {
       if (!isMounted) return;
       hasAppliedRemote = true;
+
+      // Find the hero featured project image and preload it into memory
+      const published = (newContent.projects || []).filter((p) => p.isPublished !== false);
+      const featured = published.find((p) => p.featuredInHero) || published[0] || (newContent.projects && newContent.projects[0]);
+      if (featured?.coverImage) {
+        try {
+          await preloadHeroImage(featured.coverImage);
+        } catch (e) {}
+      }
+
+      if (!isMounted) return;
       setContent(newContent);
       setIsHydrated(true);
-      // Wait a frame for React to mount the new projects before fading out the preloader
+
+      // Smooth transition buffer: ensure DOM has painted the updated image
       setTimeout(() => {
         if (isMounted) {
           setIsLoading(false);
         }
-      }, 200);
+      }, 150);
     };
 
     loadSiteContentAsync().then((loadedContent) => {
