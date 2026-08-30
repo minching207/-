@@ -109,6 +109,19 @@ export function mergeWithInitial(parsed: any): SiteContent {
 }
 
 /**
+ * Check if the browser already has cached user/remote content
+ */
+export function hasSavedLocalContent(): boolean {
+  try {
+    if (localStorage.getItem(STORAGE_KEY)) return true;
+    for (const legacyKey of LEGACY_STORAGE_KEYS) {
+      if (localStorage.getItem(legacyKey)) return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+/**
  * Synchronous initial load (from localStorage) for instant first-paint
  */
 export function loadSiteContent(): SiteContent {

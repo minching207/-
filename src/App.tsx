@@ -21,12 +21,15 @@ import {
   saveSiteContent, 
   resetToDefaultContent, 
   checkAdminSession,
-  mergeWithInitial 
+  mergeWithInitial,
+  hasSavedLocalContent 
 } from './utils/storage';
 import { subscribeToRemoteContent } from './lib/firebase';
+import { InitialPreloader } from './components/InitialPreloader';
 
 export default function App() {
   const [content, setContent] = useState<SiteContent>(loadSiteContent);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !hasSavedLocalContent());
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isResumeOpen, setIsResumeOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
@@ -34,15 +37,29 @@ export default function App() {
 
   // 1. Hydrate from Cloud Firestore & IndexedDB on initial mount
   useEffect(() => {
-    loadSiteContentAsync().then((loadedContent) => {
-      if (loadedContent) {
-        setContent(loadedContent);
+    let isMounted = true;
+
+    // Safety timeout: Ensure preloader never hangs indefinitely on slow network / offline
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setIsLoading(false);
       }
+    }, 2200);
+
+    loadSiteContentAsync().then((loadedContent) => {
+      if (isMounted) {
+        if (loadedContent) {
+          setContent(loadedContent);
+        }
+        setIsLoading(false);
+      }
+    }).catch(() => {
+      if (isMounted) setIsLoading(false);
     });
 
     // 2. Real-time listener: When admin edits content, visitors see updates instantly
     const unsubscribe = subscribeToRemoteContent((remoteContent) => {
-      if (remoteContent) {
+      if (remoteContent && isMounted) {
         setContent((current) => {
           const currentUpdated = typeof current?.updatedAt === 'number' 
             ? current.updatedAt 
@@ -58,10 +75,15 @@ export default function App() {
           }
           return mergeWithInitial(remoteContent);
         });
+        setIsLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+      unsubscribe();
+    };
   }, []);
 
   // Sync title when metadata changes
@@ -98,6 +120,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white text-[#0F172A] selection:bg-[#EC4899] selection:text-white font-sans antialiased">
+      {/* Seamless Initial Hydration Preloader for First-time/New Browser Visitors */}
+      <InitialPreloader isLoading={isLoading} />
+
       {/* Top Fixed Minimalist Navigation */}
       <Header content={content} />
 
