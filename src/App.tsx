@@ -29,7 +29,7 @@ import { InitialPreloader } from './components/InitialPreloader';
 
 export default function App() {
   const [content, setContent] = useState<SiteContent>(loadSiteContent);
-  const [isLoading, setIsLoading] = useState<boolean>(() => !hasSavedLocalContent());
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isResumeOpen, setIsResumeOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
@@ -40,12 +40,12 @@ export default function App() {
     let isMounted = true;
     let hasAppliedRemote = false;
 
-    // Safety timeout: Ensure preloader never hangs indefinitely on slow network / offline (4s)
+    // Safety timeout: Ensure preloader never hangs indefinitely on slow network / offline (2.2s)
     const safetyTimeout = setTimeout(() => {
       if (isMounted) {
         setIsLoading(false);
       }
-    }, 4000);
+    }, 2200);
 
     const applyContent = (newContent: SiteContent) => {
       if (!isMounted) return;
@@ -56,7 +56,7 @@ export default function App() {
         if (isMounted) {
           setIsLoading(false);
         }
-      }, 120);
+      }, 150);
     };
 
     loadSiteContentAsync().then((loadedContent) => {
@@ -91,7 +91,7 @@ export default function App() {
           hasAppliedRemote = true;
           setTimeout(() => {
             if (isMounted) setIsLoading(false);
-          }, 120);
+          }, 150);
         }
       }
     });

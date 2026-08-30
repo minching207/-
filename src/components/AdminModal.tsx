@@ -330,6 +330,37 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     }
   };
 
+  const handleSetHeroFeatured = async (id: string) => {
+    const updatedProjects = draft.projects.map((p) => ({
+      ...p,
+      featuredInHero: p.id === id,
+    }));
+    const newDraft = { ...draft, projects: updatedProjects };
+    setDraft(newDraft);
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveNotice(null);
+    try {
+      const res = await onSaveContent(newDraft);
+      if (res && res.success) {
+        setIsCloudSynced(res.cloudSynced !== false);
+        setSaveNotice(res.cloudSynced === false ? (res.error || '로컬에 안전하게 저장되었습니다 (클라우드 동기화 대기)') : null);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } else if (res && !res.success) {
+        setSaveError(res.error || '메인 대표작 설정 저장 실패');
+      } else {
+        setIsCloudSynced(true);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      }
+    } catch (e: any) {
+      setSaveError(e?.message || '저장 중 오류 발생');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSaveEditingProject = async (proj: Project) => {
     let updatedProjects: Project[];
     if (isCreatingNewProject) {
@@ -719,6 +750,21 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                                   <span>{isPub ? '노출' : '숨김'}</span>
                                 </button>
 
+                                {/* Direct Hero Featured Toggle */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetHeroFeatured(proj.id)}
+                                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-mono transition-all border ${
+                                    proj.featuredInHero
+                                      ? 'bg-pink-950/80 border-pink-500/90 text-pink-200 font-bold shadow-xs'
+                                      : 'bg-[#2A2A28] border-[#444440] text-slate-400 hover:text-pink-300 hover:bg-[#343430]'
+                                  }`}
+                                  title={proj.featuredInHero ? "현재 메인 최상단에 노출되는 대표 프로젝트입니다" : "이 프로젝트를 메인 최상단 대표작으로 설정하기"}
+                                >
+                                  <Sparkles className={`w-3.5 h-3.5 ${proj.featuredInHero ? 'text-pink-400 fill-pink-400' : ''}`} />
+                                  <span>{proj.featuredInHero ? '⭐ 대표작' : '대표작 지정'}</span>
+                                </button>
+
                                 <button
                                   onClick={() => handleMoveProject(idx, 'up')}
                                   disabled={idx === 0}
@@ -773,7 +819,46 @@ export const AdminModal: React.FC<AdminModalProps> = ({
               {/* TAB 2: HERO */}
               {activeTab === 'hero' && (
                 <div className="space-y-6 max-w-2xl">
-                  <h3 className="text-base font-bold text-white">메인 히어로 카피 수정</h3>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-white">메인 히어로 설정 & 대표작 선택</h3>
+                      <p className="text-xs text-[#888880] mt-0.5">
+                        웹사이트 최상단에 노출될 대표 프로젝트와 메인 카피 문구를 설정합니다.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Featured Project Selector */}
+                  <div className="p-4 rounded-xl bg-[#242422] border border-pink-900/40 space-y-2.5">
+                    <label className="text-xs font-mono text-pink-400 font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-pink-400" />
+                      <span>메인 최상단 1개 대표 프로젝트 (Hero Featured Project)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      방문자가 사이트에 접속했을 때 우측 상단 쇼케이스 프레임에 노출될 대표 작업물을 선택합니다.
+                    </p>
+                    <select
+                      value={draft.projects.find((p) => p.featuredInHero)?.id || draft.projects.find((p) => p.isPublished !== false)?.id || ''}
+                      onChange={(e) => {
+                        const targetId = e.target.value;
+                        const updated = draft.projects.map((p) => ({
+                          ...p,
+                          featuredInHero: p.id === targetId,
+                        }));
+                        setDraft({ ...draft, projects: updated });
+                      }}
+                      className="w-full px-3 py-2.5 rounded-lg bg-[#1C1C1A] border border-[#3A3A36] text-white text-xs font-mono focus:border-pink-500"
+                    >
+                      {draft.projects.map((p, pIdx) => {
+                        const isPub = p.isPublished !== false;
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {p.number || String(pIdx + 1).padStart(2, '0')}. {p.title} {isPub ? '(노출 중)' : '(숨김 상태)'} {p.featuredInHero ? '★ 현재 대표작' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
 
                   <div className="space-y-4">
                     <div className="space-y-1.5">
@@ -1367,6 +1452,39 @@ const ProjectEditor: React.FC<ProjectEditorProps> = ({ project, onSave, onCancel
             <span>숨김 (비공개)</span>
           </button>
         </div>
+      </div>
+
+      {/* Featured in Hero toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-[#222220] border border-[#333330]">
+        <div className="space-y-0.5">
+          <div className="text-xs font-bold text-white flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+            <span>메인 화면 최상단 대표작으로 설정</span>
+            {form.featuredInHero && (
+              <span className="text-[10px] bg-pink-900/60 text-pink-300 px-1.5 py-0.2 rounded font-mono font-bold">
+                HERO FEATURED
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {form.featuredInHero
+              ? '현재 사이트 접속 시 최상단 히어로 보드에 이 작업물이 1순위 대표작으로 노출됩니다.'
+              : '체크 시 사이트 최상단 히어로 보드의 대표 프로젝트로 지정됩니다.'}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setForm({ ...form, featuredInHero: !form.featuredInHero })}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 shrink-0 border ${
+            form.featuredInHero
+              ? 'bg-pink-600 text-white border-pink-500 shadow-sm'
+              : 'bg-[#2A2A28] border-[#3A3A36] text-slate-300 hover:text-white hover:bg-[#343430]'
+          }`}
+        >
+          <Sparkles className={`w-3.5 h-3.5 ${form.featuredInHero ? 'fill-white' : ''}`} />
+          <span>{form.featuredInHero ? '대표작 해제' : '⭐ 대표작으로 지정'}</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

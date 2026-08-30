@@ -10,8 +10,12 @@ interface HeroProps {
 }
 
 export const Hero: React.FC<HeroProps> = ({ content, onSelectProject }) => {
-  const publishedProjects = content.projects.filter((p) => p.isPublished !== false);
-  const featuredProject = publishedProjects.find((p) => p.featuredInHero) || publishedProjects[0] || content.projects[0];
+  const publishedProjects = (content.projects || []).filter((p) => p.isPublished !== false);
+  const featuredProject = publishedProjects.find((p) => p.featuredInHero) || publishedProjects[0] || (content.projects && content.projects[0]);
+
+  const featuredIndex = featuredProject ? Math.max(0, publishedProjects.findIndex((p) => p.id === featuredProject.id)) : 0;
+  const currentNumStr = String(featuredIndex + 1).padStart(2, '0');
+  const totalCountStr = String(publishedProjects.length).padStart(2, '0');
 
   const getTagBadgeStyle = (tag: string, index: number) => {
     const lower = tag.toLowerCase();
@@ -218,7 +222,7 @@ export const Hero: React.FC<HeroProps> = ({ content, onSelectProject }) => {
                 클릭하여 디자인 스토리 확인
               </span>
               <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-full bg-[#FDF2F8] text-[#DB2777] font-bold border border-[#FBCFE8]">
-                PROJECT 01 / 0{content.projects.length}
+                PROJECT {currentNumStr} / {totalCountStr}
               </span>
             </div>
           </div>
