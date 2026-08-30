@@ -569,12 +569,19 @@ export function subscribeToRemoteContent(onUpdate: (content: SiteContent) => voi
   const attachListener = (targetDb: Firestore, name: string) => {
     try {
       const liveRef = doc(targetDb, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-      const unsub = onSnapshot(liveRef, (snap) => {
+      const unsub = onSnapshot(liveRef, async (snap) => {
         if (snap.exists()) {
           const data = snap.data();
           if (data && data.content && Array.isArray(data.content.projects) && data.content.projects.length > 0) {
             onUpdate(data.content as SiteContent);
           }
+        } else {
+          try {
+            const fallback = await getRemoteContent();
+            if (fallback && Array.isArray(fallback.projects) && fallback.projects.length > 0) {
+              onUpdate(fallback);
+            }
+          } catch (e) {}
         }
       }, (error) => {
         console.warn(`[Firebase] Real-time subscription error on ${name}:`, error);

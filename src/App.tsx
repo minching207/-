@@ -29,7 +29,8 @@ import { InitialPreloader } from './components/InitialPreloader';
 
 export default function App() {
   const [content, setContent] = useState<SiteContent>(loadSiteContent);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isHydrated, setIsHydrated] = useState<boolean>(() => hasSavedLocalContent());
+  const [isLoading, setIsLoading] = useState<boolean>(() => !hasSavedLocalContent());
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isResumeOpen, setIsResumeOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
@@ -40,59 +41,40 @@ export default function App() {
     let isMounted = true;
     let hasAppliedRemote = false;
 
-    // Safety timeout: Ensure preloader never hangs indefinitely on slow network / offline (2.2s)
+    // Safety timeout: 5s buffer to ensure preloader never hangs permanently even on completely offline connections
     const safetyTimeout = setTimeout(() => {
-      if (isMounted) {
+      if (isMounted && !hasAppliedRemote) {
+        setIsHydrated(true);
         setIsLoading(false);
       }
-    }, 2200);
+    }, 5000);
 
     const applyContent = (newContent: SiteContent) => {
       if (!isMounted) return;
       hasAppliedRemote = true;
       setContent(newContent);
+      setIsHydrated(true);
       // Wait a frame for React to mount the new projects before fading out the preloader
       setTimeout(() => {
         if (isMounted) {
           setIsLoading(false);
         }
-      }, 150);
+      }, 200);
     };
 
     loadSiteContentAsync().then((loadedContent) => {
-      if (isMounted && loadedContent) {
+      if (isMounted && loadedContent && Array.isArray(loadedContent.projects) && loadedContent.projects.length > 0) {
         applyContent(loadedContent);
       }
     }).catch(() => {
       // If error occurs, subscribeToRemoteContent or safetyTimeout will handle it
     });
 
-    // 2. Real-time listener: When admin edits content, visitors see updates instantly
+    // 2. Real-time listener: When admin edits content or first snapshot arrives, visitors see updates instantly
     const unsubscribe = subscribeToRemoteContent((remoteContent) => {
-      if (remoteContent && isMounted) {
-        setContent((current) => {
-          const currentUpdated = typeof current?.updatedAt === 'number' 
-            ? current.updatedAt 
-            : (current?.updatedAt ? new Date(current.updatedAt).getTime() : 0);
-          const remoteUpdated = typeof remoteContent?.updatedAt === 'number'
-            ? remoteContent.updatedAt
-            : (remoteContent?.updatedAt ? new Date(remoteContent.updatedAt).getTime() : 0);
-
-          // If local has newer unsynced edits, protect local state from being overwritten
-          if (currentUpdated && (!remoteUpdated || currentUpdated >= remoteUpdated)) {
-            console.log('[App] Preserving active local edits over remote data');
-            return current;
-          }
-          return mergeWithInitial(remoteContent);
-        });
-
-        // Ensure preloader is dismissed only after real remote content is rendered
-        if (!hasAppliedRemote) {
-          hasAppliedRemote = true;
-          setTimeout(() => {
-            if (isMounted) setIsLoading(false);
-          }, 150);
-        }
+      if (remoteContent && isMounted && Array.isArray(remoteContent.projects) && remoteContent.projects.length > 0) {
+        const merged = mergeWithInitial(remoteContent);
+        applyContent(merged);
       }
     });
 
@@ -140,45 +122,48 @@ export default function App() {
       {/* Seamless Initial Hydration Preloader for First-time/New Browser Visitors */}
       <InitialPreloader isLoading={isLoading} />
 
-      {/* Top Fixed Minimalist Navigation */}
-      <Header content={content} />
+      {/* Main Page Container - Zero-flash visibility guarantee */}
+      <div className={`transition-opacity duration-300 ${isHydrated ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        {/* Top Fixed Minimalist Navigation */}
+        <Header content={content} />
 
-      {/* Main Content Flow */}
-      <main id="portfolio-main">
-        {/* Hero Section with exact slogan & editorial mockup visual */}
-        <Hero
+        {/* Main Content Flow */}
+        <main id="portfolio-main">
+          {/* Hero Section with exact slogan & editorial mockup visual */}
+          <Hero
+            content={content}
+            onSelectProject={(proj) => setSelectedProject(proj)}
+          />
+
+          {/* 01 / Selected Works (curated detail page & content projects) */}
+          <SelectedWorks
+            projects={content.projects}
+            onSelectProject={(proj) => setSelectedProject(proj)}
+          />
+
+          {/* 02 / Design Approach (Understand, Organize, Visualize, Refine + Key quote) */}
+          <DesignApproach content={content} />
+
+          {/* 03 / About Me (Introduction, 3 Strengths, Skills, Experience Timeline) */}
+          <AboutSection
+            content={content}
+            onOpenResume={() => setIsResumeOpen(true)}
+          />
+
+          {/* 04 / Contact (Let's Work Together, Email Copy, Direct Inquiry Form) */}
+          <ContactSection
+            content={content}
+            onOpenResume={() => setIsResumeOpen(true)}
+          />
+        </main>
+
+        {/* Minimal Editorial Footer */}
+        <Footer
           content={content}
-          onSelectProject={(proj) => setSelectedProject(proj)}
+          onOpenAdmin={() => setIsAdminOpen(true)}
+          isAdmin={isAdmin}
         />
-
-        {/* 01 / Selected Works (curated detail page & content projects) */}
-        <SelectedWorks
-          projects={content.projects}
-          onSelectProject={(proj) => setSelectedProject(proj)}
-        />
-
-        {/* 02 / Design Approach (Understand, Organize, Visualize, Refine + Key quote) */}
-        <DesignApproach content={content} />
-
-        {/* 03 / About Me (Introduction, 3 Strengths, Skills, Experience Timeline) */}
-        <AboutSection
-          content={content}
-          onOpenResume={() => setIsResumeOpen(true)}
-        />
-
-        {/* 04 / Contact (Let's Work Together, Email Copy, Direct Inquiry Form) */}
-        <ContactSection
-          content={content}
-          onOpenResume={() => setIsResumeOpen(true)}
-        />
-      </main>
-
-      {/* Minimal Editorial Footer */}
-      <Footer
-        content={content}
-        onOpenAdmin={() => setIsAdminOpen(true)}
-        isAdmin={isAdmin}
-      />
+      </div>
 
       {/* In-depth Project Design Story Modal */}
       <ProjectDetailModal
