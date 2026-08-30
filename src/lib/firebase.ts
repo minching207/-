@@ -561,24 +561,38 @@ export async function saveRemoteContent(content: SiteContent): Promise<{ success
 }
 
 /**
- * Subscribe to real-time updates from Firestore
+ * Subscribe to real-time updates from Firestore with multi-DB listener support
  */
 export function subscribeToRemoteContent(onUpdate: (content: SiteContent) => void): () => void {
-  try {
-    const liveRef = doc(primaryFirestore, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
-    const unsubscribe = onSnapshot(liveRef, async (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data && data.content) {
-          onUpdate(data.content as SiteContent);
+  const unsubscribes: (() => void)[] = [];
+
+  const attachListener = (targetDb: Firestore, name: string) => {
+    try {
+      const liveRef = doc(targetDb, PORTFOLIO_DOC_PATH, PORTFOLIO_DOC_ID);
+      const unsub = onSnapshot(liveRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data && data.content && Array.isArray(data.content.projects) && data.content.projects.length > 0) {
+            onUpdate(data.content as SiteContent);
+          }
         }
-      }
-    }, (error) => {
-      console.warn('[Firebase] Real-time subscription error:', error);
-    });
-    return unsubscribe;
-  } catch (error) {
-    console.warn('[Firebase] Setup real-time listener error:', error);
-    return () => {};
+      }, (error) => {
+        console.warn(`[Firebase] Real-time subscription error on ${name}:`, error);
+      });
+      unsubscribes.push(unsub);
+    } catch (error) {
+      console.warn(`[Firebase] Setup real-time listener error on ${name}:`, error);
+    }
+  };
+
+  attachListener(primaryFirestore, 'primaryFirestore');
+  if (defaultFirestore !== primaryFirestore) {
+    attachListener(defaultFirestore, 'defaultFirestore');
   }
+
+  return () => {
+    unsubscribes.forEach((fn) => {
+      try { fn(); } catch (e) {}
+    });
+  };
 }

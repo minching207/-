@@ -38,23 +38,33 @@ export default function App() {
   // 1. Hydrate from Cloud Firestore & IndexedDB on initial mount
   useEffect(() => {
     let isMounted = true;
+    let hasAppliedRemote = false;
 
-    // Safety timeout: Ensure preloader never hangs indefinitely on slow network / offline
+    // Safety timeout: Ensure preloader never hangs indefinitely on slow network / offline (4s)
     const safetyTimeout = setTimeout(() => {
       if (isMounted) {
         setIsLoading(false);
       }
-    }, 2200);
+    }, 4000);
+
+    const applyContent = (newContent: SiteContent) => {
+      if (!isMounted) return;
+      hasAppliedRemote = true;
+      setContent(newContent);
+      // Wait a frame for React to mount the new projects before fading out the preloader
+      setTimeout(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }, 120);
+    };
 
     loadSiteContentAsync().then((loadedContent) => {
-      if (isMounted) {
-        if (loadedContent) {
-          setContent(loadedContent);
-        }
-        setIsLoading(false);
+      if (isMounted && loadedContent) {
+        applyContent(loadedContent);
       }
     }).catch(() => {
-      if (isMounted) setIsLoading(false);
+      // If error occurs, subscribeToRemoteContent or safetyTimeout will handle it
     });
 
     // 2. Real-time listener: When admin edits content, visitors see updates instantly
@@ -75,7 +85,14 @@ export default function App() {
           }
           return mergeWithInitial(remoteContent);
         });
-        setIsLoading(false);
+
+        // Ensure preloader is dismissed only after real remote content is rendered
+        if (!hasAppliedRemote) {
+          hasAppliedRemote = true;
+          setTimeout(() => {
+            if (isMounted) setIsLoading(false);
+          }, 120);
+        }
       }
     });
 
